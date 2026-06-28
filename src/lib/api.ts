@@ -12,6 +12,7 @@ export const getApiUrl = (path: string): string => {
   const baseUrl = (rawBaseUrl || 'https://89-168-120-135.sslip.io').trim();
   const relayUrl = (import.meta.env.VITE_API_RELAY_URL || 'https://ais-dev-vpm462ccg3jpy6a7n4c54f-708516523970.europe-west2.run.app').trim();
   
+ HEAD
   const isHttps = typeof window !== 'undefined' && window.location.protocol === 'https:';
   const isSurge = typeof window !== 'undefined' && window.location.hostname.includes('surge.sh');
   const currentHostname = typeof window !== 'undefined' ? window.location.hostname : '';
@@ -61,6 +62,39 @@ export const getApiUrl = (path: string): string => {
   if (baseUrl) {
     const cleanBase = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
     return `${cleanBase}${cleanPath}`;
+
+  if (baseUrl) {
+    const cleanPath = path.startsWith('/') ? path.substring(1) : path;
+    const cleanBase = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
+    const finalUrl = `${cleanBase}${cleanPath}`;
+    console.log(`[API Proxy] Routing ${path} -> ${finalUrl}`);
+    return finalUrl;
+  }
+  
+  // Diagnostic for Surge/Production deployments without backend URL
+  // We automatically route to the Oracle Cloud backend when deployed to Surge or a static environment to prevent 404s.
+  // CRITICAL: On Cloud Run (.run.app), localhost, google domains, or dev workspaces, we must use our own local backend routes.
+  const isLocalStorageOrDev = 
+    window.location.hostname.includes('localhost') || 
+    window.location.hostname.includes('127.0.0.1') || 
+    window.location.hostname.includes('run.app') ||
+    window.location.hostname.includes('google') ||
+    window.location.hostname.includes('cloud');h
+
+  if (!isLocalStorageOrDev) {
+    // Determine protocol: usage of http on an https site (like Surge) will be blocked by browsers.
+    // However, if the user explicitly provided http://89.168.120.135, we follow it.
+    const fallbackBaseUrl = 'https://eight-webs-attend.loca.lt';
+    const cleanPath = path.startsWith('/') ? path.substring(1) : path;
+    const finalUrl = `${fallbackBaseUrl}/${cleanPath}`;
+    
+    if (window.location.protocol === 'https:' && fallbackBaseUrl.startsWith('http:')) {
+      console.warn(`[API Proxy] Warning: Site is HTTPS but API is HTTP. Browser may block requests to ${finalUrl}`);
+    }
+    
+    console.log(`[API Proxy Fallback] Routing ${path} -> ${finalUrl}`);
+    return finalUrl;
+ a41c839 (fix: updated fallback base URL to secure localtunnel)
   }
   
   return cleanPath;
