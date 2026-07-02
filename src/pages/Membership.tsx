@@ -124,6 +124,16 @@ export default function Membership() {
     }
   };
 
+  const getNextBillingDate = () => {
+    const startDate = userData?.updatedAt?.seconds 
+      ? new Date(userData.updatedAt.seconds * 1000) 
+      : (userData?.createdAt?.seconds ? new Date(userData.createdAt.seconds * 1000) : new Date());
+    
+    const nextBilling = new Date(startDate);
+    nextBilling.setMonth(nextBilling.getMonth() + 1);
+    return nextBilling.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+  };
+
   return (
     <div className="space-y-12 pb-20 max-w-6xl mx-auto px-4">
       {/* Current Status Dashboard (for members) */}
@@ -167,8 +177,8 @@ export default function Membership() {
             </div>
             <div className="shrink-0 flex gap-4">
               <div className="text-center bg-white/5 backdrop-blur-md px-6 py-4 rounded-3xl border border-white/5">
-                <div className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1">Nex Billing</div>
-                <div className="text-sm font-black italic">June 28, 2026</div>
+                <div className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1">Next Billing</div>
+                <div className="text-sm font-black italic">{getNextBillingDate()}</div>
               </div>
             </div>
           </div>

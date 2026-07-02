@@ -2354,55 +2354,109 @@ async function startServer() {
         const userDoc = await resilientDb.collection('users').doc(userId).get();
         if (!userDoc.exists) return res.status(404).json({ success: false, error: "USER_NOT_FOUND" });
         
-        const points = userDoc.data()?.points || 0; // In USDT now
-        const requiredPoints = parseFloat(amount);
+        const userData = userDoc.data();
+        const points = userData?.points || 0;
+        const totalActiveTime = userData?.totalActiveTime || 0;
+        const requestedAmount = parseFloat(amount);
 
-        if (isNaN(requiredPoints) || requiredPoints <= 0) {
-          return res.status(400).json({ success: false, error: "INVALID_AMOUNT", message: "Withdrawal amount must be greater than zero." });
+        if (isNaN(requestedAmount) || requestedAmount < 100) {
+          return res.status(400).json({ success: false, error: "INVALID_AMOUNT", message: "Minimum withdrawal amount is 100 USDT." });
         }
 
-        if (points <= 0) {
-          return res.status(400).json({ success: false, error: "NEGATIVE_BALANCE", message: "Withdrawals are not permitted from a zero or negative balance." });
+        if (points < requestedAmount) {
+          return res.status(400).json({ success: false, error: "INSUFFICIENT_BALANCE", message: `Insufficient balance. Need ${requestedAmount.toFixed(4)}. Have ${points.toFixed(4)}` });
         }
+
+        // FEE CALCULATION
+        const networkFee = 1.0;
+        const taxAmount = requestedAmount * 0.05;
+        const platformFeeAmount = requestedAmount * 0.02;
+        const totalFees = networkFee + taxAmount + platformFeeAmount;
+        const netAmount = Math.max(0, requestedAmount - totalFees);
+
+        // Deduct full requested amount from points
+        // And re-calibrate totalActiveTime to maintain proportionality
+        // Rate: 0.016 USDT per 30s => 0.0005333 USDT per second
+        const rate = 0.016 / 30;
+        const secondsToDeduct = Math.floor(requestedAmount / rate);
+        const newTotalActiveTime = Math.max(0, totalActiveTime - secondsToDeduct);
         
-        if (points < requiredPoints) {
-          return res.status(400).json({ success: false, error: "INSUFFICIENT_BALANCE", message: `Insufficient USDT for this withdrawal. Need ${requiredPoints.toFixed(4)}. Your balance: ${points.toFixed(4)}` });
-        }
-        
-        // Deduct points
         await resilientDb.collection('users').doc(userId).update({
-          points: FieldValue.increment(-requiredPoints),
-          totalWithdrawalsUsd: FieldValue.increment(requiredPoints),
+          points: FieldValue.increment(-requestedAmount),
+          balance: FieldValue.increment(-requestedAmount),
+          totalActiveTime: newTotalActiveTime,
+          totalWithdrawalsUsd: FieldValue.increment(requestedAmount),
           serverSecret: SERVER_SECRET
         });
-        console.log(`[Deduction] Deducted ${requiredPoints} USDT from ${userId} for Crypto payout to ${walletAddress}.`);
-      } catch (deductionErr: any) {
-        return res.status(500).json({ success: false, error: "DEDUCTION_FAILED", message: deductionErr.message });
+
+        // 5. ATTEMPT REAL BINANCE PAYOUT IF KEYS EXIST
+        const apiKey = getBinanceApiKey();
+        const apiSecret = getBinanceApiSecret();
+        let binanceId = null;
+        let finalStatus = 'pending';
+
+        if (apiKey && apiSecret && netAmount > 0) {
+          try {
+            const timestamp = Date.now();
+            let q = `coin=USDT&address=${cleanAndNormalizeAddress(walletAddress)}&amount=${netAmount}&transactionFeeFlag=true&timestamp=${timestamp}`;
+            if (network) q += `&network=${network}`;
+            const sig = crypto.createHmac("sha256", apiSecret).update(q).digest("hex");
+            q += `&signature=${sig}`;
+
+            const resp = await performBinanceRequest('POST', `/v1/capital/withdraw/apply`, {
+              data: q,
+              headers: { 
+                "X-MBX-APIKEY": apiKey,
+                "Content-Type": "application/x-www-form-urlencoded"
+              }
+            }, 'sapi');
+
+            if (resp.status === 200 && resp.data?.id) {
+              binanceId = resp.data.id;
+              finalStatus = 'completed';
+            }
+          } catch (binErr: any) {
+            console.error("[User Payout] Binance gateway failed, falling back to pending/manual:", binErr.message);
+          }
+        }
+
+        // Create detailed transaction record
+        await resilientDb.collection('withdrawals').add({
+          userId,
+          amount: requestedAmount,
+          netAmount: netAmount,
+          fees: {
+            network: networkFee,
+            tax: taxAmount,
+            platform: platformFeeAmount,
+            total: totalFees
+          },
+          walletAddress: cleanAndNormalizeAddress(walletAddress),
+          network: network || 'TRX',
+          timestamp: FieldValue.serverTimestamp(),
+          reference,
+          status: finalStatus,
+          binanceId: binanceId,
+          reCalibratedTime: newTotalActiveTime
+        });
+
+        await markIdempotency(reference, finalStatus === 'completed' ? 'success' : 'pending', { binanceId });
+        return res.json({ 
+          success: true, 
+          message: finalStatus === 'completed' 
+            ? `Withdrawal of ${requestedAmount} USDT initiated. Net amount of ${netAmount.toFixed(4)} USDT sent to ${walletAddress}.` 
+            : `Withdrawal request for ${requestedAmount} USDT queued. Our team will process it shortly.`,
+          transactionId: reference,
+          netAmount,
+          fees: totalFees
+        });
+
+      } catch (err: any) {
+        return res.status(500).json({ success: false, error: "PAYOUT_ERROR", message: err.message });
       }
     }
 
-    await markIdempotency(reference, 'pending', { userId, amount, walletAddress });
-
-    // Simulate successful crypto payout since we might not have a direct external crypto API hooked up here for users
-    console.log(`Simulating Crypto payout to ${walletAddress} on ${network} for amount ${amount}`);
-    
-    // Create transaction record
-    if (userId) {
-      await resilientDb.collection('transactions').add({
-        userId,
-        type: 'payout',
-        method: 'crypto',
-        amount: -parseFloat(amount),
-        walletAddress,
-        network,
-        timestamp: new Date(),
-        reference,
-        status: 'success' // Simulated success
-      });
-    }
-
-    await markIdempotency(reference, 'success');
-    return res.json({ success: true, message: `Withdrawal of ${amount} USDT to ${walletAddress} initiated.` });
+    return res.status(400).json({ success: false, error: "USER_ID_REQUIRED" });
   });
 
   app.post("/api/payout/platform", async (req, res) => {

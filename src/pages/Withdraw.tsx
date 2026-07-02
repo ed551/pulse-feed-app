@@ -7,7 +7,8 @@ import {
   XCircle, 
   Loader2, 
   Coins,
-  History
+  History,
+  Clock
 } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import { useRevenue } from "../contexts/RevenueContext";
@@ -19,10 +20,32 @@ import { cn } from "../lib/utils";
 
 export default function Withdraw() {
   const { currentUser, userData } = useAuth();
-  const { consistentPoints } = useRevenue();
+  const { consistentPoints, totalActiveTime, activeSeconds: sessionActiveSeconds } = useRevenue();
 
   const formatCurrency = (amount: number) => {
-    return `USDT ${Number(amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}`;
+    return `USDT ${Number(amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 6 })}`;
+  };
+
+  const formatTime = (seconds: number) => {
+    const d = Math.floor(seconds / (3600 * 24));
+    const h = Math.floor((seconds % (3600 * 24)) / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = Math.floor(seconds % 60);
+    return `${d}d ${h}h ${m}m ${s}s`;
+  };
+
+  // Fees calculation
+  const networkFee = 1.00; // Flat 1 USDT network fee
+  const taxRate = 0.05; // 5% tax
+  const platformFeeRate = 0.02; // 2% platform fee
+  
+  const calculateFees = (withdrawAmount: number) => {
+    if (!withdrawAmount || isNaN(withdrawAmount)) return { total: 0, net: 0, tax: 0, platform: 0 };
+    const tax = withdrawAmount * taxRate;
+    const platform = withdrawAmount * platformFeeRate;
+    const totalFees = networkFee + tax + platform;
+    const netAmount = Math.max(0, withdrawAmount - totalFees);
+    return { total: totalFees, net: netAmount, tax, platform, network: networkFee };
   };
 
   // Route/Role selector states
@@ -36,6 +59,8 @@ export default function Withdraw() {
   const [withdrawSuccess, setWithdrawSuccess] = useState<any | null>(null);
   const [withdrawLoading, setWithdrawLoading] = useState(false);
   const [withdrawalHistory, setWithdrawalHistory] = useState<any[]>([]);
+
+  const fees = calculateFees(parseFloat(amount) || 0);
 
   // Live platform stats for Developer role
   const [platformStats, setPlatformStats] = useState<any>(null);
@@ -279,44 +304,63 @@ export default function Withdraw() {
             <>
               <div className="bg-slate-950/60 rounded-2xl border border-slate-800/80 p-6 relative overflow-hidden">
                 <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none">
-                  <Coins className="w-32 h-32" />
+                  <Clock className="w-32 h-32" />
+                </div>
+
+                <div className="flex justify-between items-start mb-4">
+                  <div className="space-y-1">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 block">
+                      Active User Timer
+                    </span>
+                    <div className="text-xl font-mono font-black text-emerald-400 animate-pulse">
+                      {formatTime(totalActiveTime)}
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 block">
+                      Membership Status
+                    </span>
+                    <div className="text-[10px] font-black text-indigo-400 bg-indigo-500/10 px-2 py-1 rounded border border-indigo-500/20 uppercase tracking-widest mt-1">
+                      {userData?.membershipLevel || 'Bronze'} Tier
+                    </div>
+                  </div>
                 </div>
 
                 <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">
-                  {selectedRole === 'developer' ? 'Amount Available for Withdraw (Treasury)' : 'Amount Available for Withdraw'}
+                  {selectedRole === 'developer' ? 'Amount Available for Withdraw (Treasury)' : 'Current Balance (USDT)' }
                 </span>
                 
                 <div className="flex items-baseline gap-2 mt-1">
                   <h2 className="text-4xl font-extrabold text-white tracking-tight">
-                    {Number(currentAvailableBalance || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
+                    {Number(currentAvailableBalance || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 6 })}
                   </h2>
                   <span className="text-sm font-black text-purple-400 font-mono">USDT</span>
                 </div>
 
                 <div className="mt-4 pt-4 border-t border-slate-900 grid grid-cols-2 gap-4">
                   <div className="space-y-1">
-                    <p className="text-[9px] font-black uppercase tracking-widest text-slate-500">Time Spent Revenue</p>
-                    <p className="text-sm font-bold text-slate-300">USDT {Number(userData?.timeSpentRevenue || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}</p>
+                    <p className="text-[9px] font-black uppercase tracking-widest text-slate-500">Session Earning</p>
+                    <p className="text-sm font-bold text-slate-300">USDT {(sessionActiveSeconds * (0.016 / 30)).toFixed(6)}</p>
                   </div>
-                  <div className="space-y-1">
-                    <p className="text-[9px] font-black uppercase tracking-widest text-slate-500">Activity Revenue</p>
-                    <p className="text-sm font-bold text-emerald-400">USDT {Number(userData?.activityRevenue || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}</p>
+                  <div className="space-y-1 text-right">
+                    <p className="text-[9px] font-black uppercase tracking-widest text-slate-500">Live Growth</p>
+                    <p className="text-sm font-bold text-emerald-400">Ticking...</p>
                   </div>
                 </div>
-
-                {selectedRole === 'developer' && platformStats && isDeveloperAccount && (
-                  <div className="mt-4 pt-4 border-t border-slate-900 grid grid-cols-2 gap-4 bg-indigo-500/5 -mx-6 px-6 pb-4">
-                    <div className="space-y-1">
-                      <p className="text-[9px] font-black uppercase tracking-widest text-indigo-400">Platform Inflow</p>
-                      <p className="text-sm font-bold text-slate-300">USDT {Number(platformStats.totalInflow || 0).toLocaleString()}</p>
-                    </div>
-                    <div className="space-y-1">
-                      <p className="text-[9px] font-black uppercase tracking-widest text-indigo-400">Platform Net Profit</p>
-                      <p className="text-sm font-bold text-indigo-400">USDT {Number(platformStats.platformShare || 0).toLocaleString()}</p>
-                    </div>
-                  </div>
-                )}
               </div>
+
+              {selectedRole === 'developer' && platformStats && isDeveloperAccount && (
+                <div className="mt-4 pt-4 border-t border-slate-900 grid grid-cols-2 gap-4 bg-indigo-500/5 -mx-6 px-6 pb-4">
+                  <div className="space-y-1">
+                    <p className="text-[9px] font-black uppercase tracking-widest text-indigo-400">Platform Inflow</p>
+                    <p className="text-sm font-bold text-slate-300">USDT {Number(platformStats.totalInflow || 0).toLocaleString()}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-[9px] font-black uppercase tracking-widest text-indigo-400">Platform Net Profit</p>
+                    <p className="text-sm font-bold text-indigo-400">USDT {Number(platformStats.platformShare || 0).toLocaleString()}</p>
+                  </div>
+                </div>
+              )}
 
               {!withdrawSuccess ? (
                 <form onSubmit={handleFormSubmit} className="space-y-5">
@@ -387,6 +431,25 @@ export default function Withdraw() {
                       {withdrawError}
                     </div>
                   )}
+
+                  <div className="bg-slate-950/50 rounded-2xl border border-slate-800 p-4 space-y-3">
+                    <div className="flex justify-between items-center text-[10px]">
+                      <span className="text-slate-500 font-bold uppercase">Withdrawal Amount</span>
+                      <span className="text-slate-300 font-black">{formatCurrency(parseFloat(amount) || 0)}</span>
+                    </div>
+                    <div className="flex justify-between items-center text-[10px]">
+                      <span className="text-slate-500 font-bold uppercase">Network Fee (TRC20)</span>
+                      <span className="text-rose-400 font-black">-{formatCurrency(fees.network)}</span>
+                    </div>
+                    <div className="flex justify-between items-center text-[10px]">
+                      <span className="text-slate-500 font-bold uppercase">Tax & Processing (7%)</span>
+                      <span className="text-rose-400 font-black">-{formatCurrency(fees.tax + fees.platform)}</span>
+                    </div>
+                    <div className="pt-2 border-t border-slate-800 flex justify-between items-center">
+                      <span className="text-[11px] text-white font-black uppercase tracking-widest">Net Amount</span>
+                      <span className="text-lg text-emerald-400 font-black">{formatCurrency(fees.net)}</span>
+                    </div>
+                  </div>
 
                   <button
                     type="submit"

@@ -69,6 +69,8 @@ interface UserData {
   phoneNumber?: string;
   activityRevenue?: number;
   timeSpentRevenue?: number;
+  totalActiveTime?: number;
+  updatedAt?: any;
   language?: string;
   timezone?: string;
   timeFormat?: string;

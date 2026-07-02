@@ -9,6 +9,7 @@ interface RevenueContextType {
   setIsIdle: (val: boolean) => void;
   pointsLocked: boolean;
   activeSeconds: number;
+  totalActiveTime: number;
   totalEarnedToday: number;
   pendingPoints: number;
   consistentPoints: number;
@@ -32,7 +33,14 @@ export const RevenueProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [isIdle, setIsIdle] = useState(false);
   const [pointsLocked, setPointsLocked] = useState(false);
   const activeSecondsRef = useRef(0);
-  const activeSeconds = activeSecondsRef.current;
+  const [sessionActiveSeconds, setSessionActiveSeconds] = useState(0);
+  const [totalActiveTime, setTotalActiveTime] = useState(0);
+
+  useEffect(() => {
+    if (userData?.totalActiveTime) {
+      setTotalActiveTime(userData.totalActiveTime);
+    }
+  }, [userData?.totalActiveTime]);
   const [totalEarnedToday, setTotalEarnedToday] = useState<number>(() => {
     try {
       // Look at localStorage if available (will be fetched dynamically on mount if currentUser is loaded)
@@ -94,6 +102,7 @@ export const RevenueProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const pendingPlatformValueRef = useRef(0);
   const lastSyncRef = useRef<number>(Date.now());
   const lastBehaviorCheckRef = useRef<number>(0);
+  const lastTimeSyncRef = useRef<number>(Date.now());
   
   const idleTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const earningIntervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -124,10 +133,10 @@ export const RevenueProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, []);
 
   const IDLE_THRESHOLD = idleThreshold;
-  const EARNING_INTERVAL = 30000; // Check every 30s locally
-  const SYNC_INTERVAL = 300000; // Sync to DB every 5 mins
-  const ACTIVE_POINTS_PER_INTERVAL = 0.016; // 0.016 USDT per 30s
-  const PLATFORM_POINTS_PER_INTERVAL = 0.016; // 0.016 USDT per 30s (50/50 Split)
+  const EARNING_INTERVAL = 1000; // Track every second locally for UI
+  const SYNC_INTERVAL = 300000; // Sync rewards to DB every 5 mins
+  const TIME_SYNC_INTERVAL = 60000; // Sync active time every 1 min
+  const ACTIVE_POINTS_PER_SECOND = 0.016 / 30; // ~0.00053 USDT per second
   
   const monitorBehaviorWithAI = async () => {
     if (!currentUser || isAnalyzingBehavior || Date.now() - lastBehaviorCheckRef.current < 60000) return;
@@ -140,7 +149,7 @@ export const RevenueProvider: React.FC<{ children: React.ReactNode }> = ({ child
       const { saveInsight } = await import('../lib/insights');
       
       const stats = {
-        activeSeconds,
+        activeSeconds: activeSecondsRef.current,
         earnedToday: totalEarnedToday,
         idleTime: isIdle ? Date.now() - (lastSyncRef.current - IDLE_THRESHOLD) : 0,
         platformStats: {
@@ -150,7 +159,7 @@ export const RevenueProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
       const prompt = `Analyze user behavioral pattern for Pulse Feeds platform (USDT-Based Economy). 
       User ID: ${currentUser.uid}
-      Session Persistence: ${activeSeconds}s
+      Session Persistence: ${activeSecondsRef.current}s
       USDT Accrual: ${totalEarnedToday} USDT
       Idle Status: ${isIdle}
       
@@ -195,6 +204,24 @@ export const RevenueProvider: React.FC<{ children: React.ReactNode }> = ({ child
       }
     }
   }, [userData?.balance, currentUser?.uid]);
+
+  const syncTimeToFirestore = async () => {
+    if (!currentUser || !db) return;
+    const now = Date.now();
+    const diffSeconds = Math.floor((now - lastTimeSyncRef.current) / 1000);
+    if (diffSeconds < 30 || isIdle) return;
+
+    lastTimeSyncRef.current = now;
+    
+    try {
+      const userRef = doc(db, 'users', currentUser.uid);
+      await updateDoc(userRef, {
+        totalActiveTime: increment(diffSeconds)
+      });
+    } catch (err) {
+      console.error("[Time Sync] Failed:", err);
+    }
+  };
 
   const syncPendingToFirestore = async () => {
     if (!currentUser || !db || pendingUserPointsRef.current <= 0 || pointsLocked) return;
@@ -551,12 +578,30 @@ const addRevenue = async (userUsdAmount: number, platformUsdAmount: number, reas
   // Track active seconds
   useEffect(() => {
     const interval = setInterval(() => {
-      if (!isIdle) {
+      if (!isIdle && !pointsLocked && currentUser) {
         activeSecondsRef.current += 1;
+        setSessionActiveSeconds(activeSecondsRef.current);
+        setTotalActiveTime(prev => prev + 1);
+
+        // Accumulate pending points
+        pendingUserPointsRef.current += ACTIVE_POINTS_PER_SECOND;
+        pendingUserValueRef.current += ACTIVE_POINTS_PER_SECOND;
+        pendingPlatformValueRef.current += ACTIVE_POINTS_PER_SECOND; // 50/50 split
+        setPendingPoints(pendingUserPointsRef.current);
+
+        // Sync every interval
+        if (Date.now() - lastSyncRef.current > SYNC_INTERVAL) {
+          syncPendingToFirestore();
+        }
+        
+        // Sync time more frequently
+        if (Date.now() - lastTimeSyncRef.current > TIME_SYNC_INTERVAL) {
+          syncTimeToFirestore();
+        }
       }
     }, 1000);
     return () => clearInterval(interval);
-  }, [isIdle]);
+  }, [isIdle, pointsLocked, currentUser]);
 
   useEffect(() => {
     if (isIdle && currentUser) {
@@ -565,7 +610,7 @@ const addRevenue = async (userUsdAmount: number, platformUsdAmount: number, reas
   }, [isIdle, currentUser]);
 
   return (
-    <RevenueContext.Provider value={{ isIdle, setIsIdle, pointsLocked, activeSeconds, totalEarnedToday, pendingPoints, consistentPoints, addRevenue, addPlatformRevenue, addPlatformExpense, deductBalance, syncActiveTimeRewards: syncPendingToFirestore }}>
+    <RevenueContext.Provider value={{ isIdle, setIsIdle, pointsLocked, activeSeconds: sessionActiveSeconds, totalActiveTime, totalEarnedToday, pendingPoints, consistentPoints, addRevenue, addPlatformRevenue, addPlatformExpense, deductBalance, syncActiveTimeRewards: syncPendingToFirestore }}>
       {children}
     </RevenueContext.Provider>
   );

@@ -6,7 +6,8 @@ import {
   Fingerprint, HeartPulse, MapPin, Phone, MessageCircle, Gamepad2, Globe, BrainCircuit, Database,
   Languages, Ticket, Snowflake, Calendar, Smartphone, Monitor, PhoneCall, Wrench, Building2,
   Calculator, LayoutGrid, Power, RefreshCw, ArrowUpCircle, ArrowDownCircle, XCircle, RotateCcw, Edit3, DollarSign, LogOut, Wallet, X, Send, Search, CheckCircle2, Plus, ShieldCheck, Zap, LineChart,
-  Volume2, VolumeX, Share2, Brain, TrendingUp, TrendingDown, Minus, Menu, GraduationCap, Eye, Loader2, Video, Type, Radio, Megaphone, BarChart2, Smile, Crown, Filter, Sparkles, Camera, Heart, Youtube, Layers, Map, AlertTriangle, ExternalLink
+  Volume2, VolumeX, Share2, Brain, TrendingUp, TrendingDown, Minus, Menu, GraduationCap, Eye, Loader2, Video, Type, Radio, Megaphone, BarChart2, Smile, Crown, Filter, Sparkles, Camera, Heart, Youtube, Layers, Map, AlertTriangle, ExternalLink,
+  ChevronUp, ChevronDown, ArrowUp, ArrowDown
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { GoogleGenAI, Modality } from "@google/genai";
@@ -286,8 +287,10 @@ export default function Layout() {
   const { showNotification } = useNotifications();
   const [isGlobalAudioActive, setIsGlobalAudioActive] = useState(false);
 
-  const toggleTheme = async () => {
-    const newTheme = !isDark;
+  const toggleTheme = async (force?: boolean) => {
+    const newTheme = force !== undefined ? force : !isDark;
+    if (force !== undefined && force === isDark) return;
+
     setIsDark(newTheme);
     localStorage.setItem('theme', newTheme ? 'dark' : 'light');
     
@@ -1170,21 +1173,45 @@ export default function Layout() {
                   </div>
                 </div>
 
+                {/* Theme Toggle Buttons */}
+                <div className="flex items-center gap-1 bg-gray-100 dark:bg-gray-800 rounded-full p-1 shadow-inner">
+                  <button 
+                    onClick={() => toggleTheme(false)}
+                    className={cn(
+                      "p-1.5 rounded-full transition-all",
+                      !isDark ? "bg-white dark:bg-gray-700 shadow-sm text-yellow-500" : "text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+                    )}
+                    title="Light Mode (Arrow Up)"
+                  >
+                    <ChevronUp className="w-3.5 h-3.5" />
+                  </button>
+                  <button 
+                    onClick={() => toggleTheme(true)}
+                    className={cn(
+                      "p-1.5 rounded-full transition-all",
+                      isDark ? "bg-gray-700 shadow-sm text-indigo-400" : "text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+                    )}
+                    title="Dark Mode (Arrow Down)"
+                  >
+                    <ChevronDown className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+
                 {/* Brightness Controls */}
                 <div className="hidden sm:flex items-center gap-1 bg-gray-100 dark:bg-gray-800 rounded-full p-1">
                   <button 
                     onClick={() => setBrightness(prev => Math.max(50, prev - 10))}
                     className="p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full transition-colors"
-                    title="Low Brightness"
+                    title="Lower Lighting"
                   >
-                    <TrendingDown className="w-3.5 h-3.5 text-gray-500" />
+                    <ArrowDown className="w-3.5 h-3.5 text-gray-500" />
                   </button>
                   <button 
                     onClick={() => setBrightness(prev => Math.min(150, prev + 10))}
                     className="p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full transition-colors"
-                    title="High Brightness"
+                    title="Higher Lighting"
                   >
-                    <TrendingUp className="w-3.5 h-3.5 text-gray-500" />
+                    <ArrowUp className="w-3.5 h-3.5 text-gray-500" />
                   </button>
                 </div>
 
@@ -1751,7 +1778,7 @@ export default function Layout() {
                   {/* App Settings (Theme, Refresh) */}
                   <div className="flex items-center gap-3">
                     <button 
-                      onClick={toggleTheme}
+                      onClick={() => toggleTheme()}
                       className="flex-1 flex items-center justify-center gap-2 p-3 bg-gray-50 dark:bg-gray-900 rounded-2xl hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                     >
                       {isDark ? <Sun className="w-4 h-4 text-yellow-400" /> : <Moon className="w-4 h-4 text-indigo-600" />}
