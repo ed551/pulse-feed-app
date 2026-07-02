@@ -960,8 +960,15 @@ async function generateContentWithRetry(params: any): Promise<any> {
         
         // Use the combinedErrorText variable defined earlier in the catch block
         
-        const isDepleted = combinedErrorText.includes("prepayment credits are depleted") || 
-                          combinedErrorText.includes("billing") ||
+        const isQuotaExceeded = status === 429 || 
+                                combinedErrorText.includes("quota") || 
+                                combinedErrorText.includes("resource_exhausted") ||
+                                combinedErrorText.includes("rate limit") ||
+                                errorJson?.error?.status === "RESOURCE_EXHAUSTED";
+
+        const isDepleted = !isQuotaExceeded && (
+                          combinedErrorText.includes("prepayment credits are depleted") || 
+                          combinedErrorText.includes("billing restricted") ||
                           combinedErrorText.includes("credits are exhausted") ||
                           combinedErrorText.includes("prepayment") ||
                           combinedErrorText.includes("depleted") ||
@@ -970,13 +977,7 @@ async function generateContentWithRetry(params: any): Promise<any> {
                           errorJson?.error?.message?.toLowerCase().includes("prepayment") ||
                           errorJson?.error?.message?.toLowerCase().includes("credits are depleted") ||
                           errorJson?.error?.message?.toLowerCase().includes("insufficient balance") ||
-                          (status === 402);
-
-        const isQuotaExceeded = status === 429 || 
-                                combinedErrorText.includes("quota") || 
-                                combinedErrorText.includes("resource_exhausted") ||
-                                combinedErrorText.includes("rate limit") ||
-                                errorJson?.error?.status === "RESOURCE_EXHAUSTED";
+                          (status === 402));
 
         const isUnavailable = status === 503 || combinedErrorText.includes("unavailable") || status === 402 || status === 504 || status === 502 || combinedErrorText.includes("overloaded");
         const isBlocked = status === 403 || combinedErrorText.includes("permission denied") || combinedErrorText.includes("dunning") || combinedErrorText.includes("lightning dunning");
@@ -986,13 +987,19 @@ async function generateContentWithRetry(params: any): Promise<any> {
           retries++;
           const oldIndex = currentKeyIndex;
           
-          // If we have more keys, try rotating even for 403s before tripping breaker
+          // Rotate keys on any quota/billing failure to spread load
+          const keysTriedForThisModel = retries % AVAILABLE_KEYS.length;
+          
           if (AVAILABLE_KEYS.length > 1) {
             currentKeyIndex = (currentKeyIndex + 1) % AVAILABLE_KEYS.length;
             console.warn(`[Server AI] Key ${oldIndex + 1} failed (${status}${isBlocked ? '-BLOCKED' : ''}${isDepleted ? '-BILLING' : ''}). Rotating to key ${currentKeyIndex + 1}/${AVAILABLE_KEYS.length}... (Attempt ${retries}/${MAX_RETRIES})`);
             ai = createAIClient(AVAILABLE_KEYS[currentKeyIndex]);
-            await delay(2000); 
-            continue; 
+            await delay(1000); 
+            
+            // If we have more keys to try for THIS specific model, rotate key but don't change model yet
+            if (isBlocked || keysTriedForThisModel !== 0) {
+               continue;
+            }
           }
 
           // If no more keys and it's a block, THEN trip the breaker
@@ -1018,10 +1025,9 @@ async function generateContentWithRetry(params: any): Promise<any> {
             
             if (isQuotaExceeded || isUnavailable || isDepleted) {
               // 429 (Quota) and 402 (Billing) need substantial wait times.
-              // 503 (Service Unavailable) usually just means one specific model is overloaded, 
-              // so we reduce the wait time to 2s to allow faster switching to fallback models.
-              const waitTime = isDepleted ? 60000 : (isUnavailable ? 2000 : 15000); 
-              console.debug(`[Server AI] ${oldModel} error ${status}${isDepleted ? ' (BILLING)' : ''}. recovery delay of ${waitTime/1000}s. (Attempt ${retries}/${MAX_RETRIES})`);
+              const backoffFactor = Math.min(retries, 6);
+              const waitTime = isDepleted ? 60000 : (isUnavailable ? 2000 : (10000 * Math.pow(1.5, backoffFactor))); 
+              console.debug(`[Server AI] ${oldModel} error ${status}${isDepleted ? ' (BILLING)' : ''}. recovery delay of ${Math.round(waitTime/1000)}s. (Attempt ${retries}/${MAX_RETRIES})`);
               
               // If we are hitting billing errors and we've already tried several times, fail fast
               if (isDepleted && retries > 3) {
@@ -1044,6 +1050,10 @@ async function generateContentWithRetry(params: any): Promise<any> {
             } else if (currentModel === 'gemini-3-flash-preview') {
               params.model = 'gemini-3.1-pro-preview';
             } else if (currentModel === 'gemini-3.1-pro-preview') {
+              params.model = 'gemini-1.5-flash';
+            } else if (currentModel === 'gemini-1.5-flash') {
+              params.model = 'gemini-1.5-pro';
+            } else if (currentModel === 'gemini-1.5-pro') {
               params.model = 'gemini-2.0-flash-exp';
             } else {
               params.model = 'gemini-3.5-flash';
@@ -1064,15 +1074,6 @@ async function generateContentWithRetry(params: any): Promise<any> {
             continue;
         }
 
-        if (isQuotaExceeded && retries < MAX_RETRIES) {
-          retries++;
-          const backoffDelay = (INITIAL_DELAY * Math.pow(2, retries)) + (Math.random() * 1000); 
-          console.warn(`[Server AI] Quota exceeded. Mandatory recovery delay of ${Math.round(backoffDelay)}ms... (Attempt ${retries}/${MAX_RETRIES})`);
-          
-          await delay(backoffDelay);
-          
-          continue;
-        }
         throw error;
       }
     }
@@ -2617,10 +2618,23 @@ async function startServer() {
             totalAmount: amount,
             unit: binanceAsset,
             reason: `Binance Withdrawal: ${binanceAsset} to ${binanceAddress}`,
-            userId: 'platform-admin',
+            userId: userId || 'platform-admin',
             timestamp: new Date(),
             reference: reference,
             serverSecret: SERVER_SECRET
+          });
+
+          // ALSO Log to 'withdrawals' collection so it shows up in history
+          await resilientDb.collection('withdrawals').add({
+            userId: userId || 'platform-admin',
+            amount: amount,
+            type: 'developer_payout',
+            address: binanceAddress,
+            network: binanceNetwork,
+            timestamp: FieldValue.serverTimestamp(),
+            reference: reference,
+            status: 'completed',
+            binanceId: resp.data.id
           });
 
           await markIdempotency(reference, 'success', { binanceId: resp.data.id });

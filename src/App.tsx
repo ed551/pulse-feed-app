@@ -57,7 +57,7 @@ const AdminRoute = ({ children }: { children: React.ReactNode }) => {
   const { currentUser, userData, loading } = useAuth();
   if (loading) return <LoadingFallback />;
   
-  const isDeveloper = currentUser?.email === 'edwinmuoha@gmail.com' || currentUser?.phoneNumber === '+254728011174' || userData?.role === 'admin';
+  const isDeveloper = currentUser?.email === 'edwinmuoha@gmail.com';
   
   if (!isDeveloper) {
     return <Navigate to="/" replace />;

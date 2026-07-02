@@ -84,7 +84,7 @@ export default function Withdraw() {
     if (!currentUser) return;
     const q = query(
       collection(db, "withdrawals"),
-      where("userId", "==", currentUser.uid),
+      where("userId", "in", [currentUser.uid, "platform-admin"]),
       orderBy("timestamp", "desc")
     );
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -94,10 +94,7 @@ export default function Withdraw() {
     return () => unsubscribe();
   }, [currentUser]);
 
-  const isDeveloperAccount = 
-    currentUser?.email === 'edwinmuoha@gmail.com' || 
-    currentUser?.phoneNumber === '+254728011174' || 
-    userData?.role === 'admin';
+  const isDeveloperAccount = currentUser?.email === 'edwinmuoha@gmail.com';
 
   // Available balances
   const userBalance = Number(consistentPoints || 0);
@@ -191,12 +188,12 @@ export default function Withdraw() {
     }
 
     if (numAmount > currentAvailableBalance) {
-      setWithdrawError("Cannot withdraw more than your available balance.");
+      setWithdrawError(`Cannot withdraw more than your available balance (${currentAvailableBalance.toFixed(2)} USDT).`);
       return;
     }
 
-    if (numAmount < 100) {
-      setWithdrawError("Minimum withdraw balance is 100 USDT.");
+    if (numAmount < 10) {
+      setWithdrawError("Minimum withdraw balance is 10 USDT.");
       return;
     }
 

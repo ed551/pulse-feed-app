@@ -1,5 +1,7 @@
 import { Type } from "@google/genai";
 import { generateContentWithRetry } from "../lib/ai";
+import { db } from "../lib/firebase";
+import { doc, getDoc, setDoc } from "firebase/firestore";
 
 export interface ModerationSettings {
   sensitivity: 'low' | 'medium' | 'high';
@@ -15,8 +17,24 @@ export const defaultSettings: ModerationSettings = {
   ]
 };
 
-export const getModerationSettings = (): ModerationSettings => {
+export const getModerationSettings = async (): Promise<ModerationSettings> => {
+  // Try local first for speed
   const stored = localStorage.getItem('moderation_settings');
+  
+  if (db) {
+    try {
+      const docRef = doc(db, 'platform', 'moderation');
+      const snap = await getDoc(docRef);
+      if (snap.exists()) {
+        const data = snap.data() as ModerationSettings;
+        localStorage.setItem('moderation_settings', JSON.stringify(data));
+        return data;
+      }
+    } catch (e) {
+      console.warn("Moderation settings fetch failed, using local fallback:", e);
+    }
+  }
+
   if (stored) {
     try {
       return JSON.parse(stored);
@@ -27,8 +45,16 @@ export const getModerationSettings = (): ModerationSettings => {
   return defaultSettings;
 };
 
-export const saveModerationSettings = (settings: ModerationSettings) => {
+export const saveModerationSettings = async (settings: ModerationSettings) => {
   localStorage.setItem('moderation_settings', JSON.stringify(settings));
+  if (db) {
+    try {
+      const docRef = doc(db, 'platform', 'moderation');
+      await setDoc(docRef, settings, { merge: true });
+    } catch (e) {
+      console.error("Failed to sync moderation settings to cloud:", e);
+    }
+  }
 };
 
 export interface ModerationResult {
@@ -42,7 +68,7 @@ export const moderateContent = async (content: string, type: 'post' | 'comment' 
     return { isApproved: true };
   }
 
-  const settings = getModerationSettings();
+  const settings = await getModerationSettings();
   
   const prompt = `
 You are an AI content moderator for a community platform.

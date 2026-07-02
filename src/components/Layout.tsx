@@ -976,7 +976,7 @@ export default function Layout() {
     { path: '/settings', icon: Settings, color: 'text-gray-500', label: t('settings') },
   ];
 
-  const isDeveloper = currentUser?.email === 'edwinmuoha@gmail.com' || currentUser?.phoneNumber === '+254728011174' || userData?.role === 'admin';
+  const isDeveloper = currentUser?.email === 'edwinmuoha@gmail.com';
 
   const navItems = [...coreNavItems, ...extraNavItems];
 
@@ -1183,7 +1183,7 @@ export default function Layout() {
                     )}
                     title="Light Mode (Arrow Up)"
                   >
-                    <ChevronUp className="w-3.5 h-3.5" />
+                    <ArrowUp className="w-3.5 h-3.5" />
                   </button>
                   <button 
                     onClick={() => toggleTheme(true)}
@@ -1193,7 +1193,7 @@ export default function Layout() {
                     )}
                     title="Dark Mode (Arrow Down)"
                   >
-                    <ChevronDown className="w-3.5 h-3.5" />
+                    <ArrowDown className="w-3.5 h-3.5" />
                   </button>
                 </div>
 

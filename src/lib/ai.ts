@@ -47,7 +47,7 @@ export async function generateContentWithRetry(params: any): Promise<any> {
   
   if (isBrowser) {
     let proxyRetries = 0;
-    const MAX_PROXY_RETRIES = 30; // High resilience for infrastructure scaling/warmup
+    const MAX_PROXY_RETRIES = 10; // Reduced from 30 to prevent quota hammering after server-side exhaustion
 
     while (proxyRetries <= MAX_PROXY_RETRIES) {
       try {
@@ -219,16 +219,16 @@ export async function generateContentWithRetry(params: any): Promise<any> {
                         errorString.includes("503") || errorString.includes("UNAVAILABLE") ? 503 : 500);
 
         const combinedErrorText = (errorString + " " + JSON.stringify(error)).toLowerCase();
-        const isDepleted = combinedErrorText.includes("prepayment credits are depleted") || 
-                          combinedErrorText.includes("billing") ||
+        const isQuotaExceeded = status === 429 || combinedErrorText.includes("quota") || combinedErrorText.includes("resource_exhausted") || combinedErrorText.includes("rate limit");
+
+        const isDepleted = !isQuotaExceeded && (combinedErrorText.includes("prepayment credits are depleted") || 
+                          combinedErrorText.includes("billing restricted") ||
                           combinedErrorText.includes("credits are exhausted") ||
                           combinedErrorText.includes("depleted") ||
                           combinedErrorText.includes("insufficient balance") ||
                           combinedErrorText.includes("credit") ||
                           combinedErrorText.includes("billing_depleted") ||
-                          status === 402;
-
-        const isQuotaExceeded = status === 429 || combinedErrorText.includes("quota") || combinedErrorText.includes("resource_exhausted") || combinedErrorText.includes("rate limit");
+                          status === 402);
         const isProxyError = status === 500 || status === 503 || status === 504 || combinedErrorText.includes("xhr error") || combinedErrorText.includes("failed to fetch") || status === 502;
         const isNotFound = status === 404;
         const isBlocked = status === 403 || combinedErrorText.includes("permission denied") || combinedErrorText.includes("dunning") || combinedErrorText.includes("lightning dunning");
@@ -275,6 +275,10 @@ export async function generateContentWithRetry(params: any): Promise<any> {
             } else if (currentModel === 'gemini-3-flash-preview') {
               params.model = 'gemini-3.1-pro-preview';
             } else if (currentModel === 'gemini-3.1-pro-preview') {
+              params.model = 'gemini-1.5-flash';
+            } else if (currentModel === 'gemini-1.5-flash') {
+              params.model = 'gemini-1.5-pro';
+            } else if (currentModel === 'gemini-1.5-pro') {
               params.model = 'gemini-2.0-flash-exp';
             } else {
               params.model = 'gemini-3.5-flash';

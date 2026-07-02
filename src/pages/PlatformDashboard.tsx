@@ -2,14 +2,14 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { generateContentWithRetry, getAIBreakerStatus } from '../lib/ai';
 import { db, auth, handleFirestoreError, OperationType } from '../lib/firebase';
-import { collection, getDocs, query, doc, onSnapshot, updateDoc, increment, addDoc, serverTimestamp, getCountFromServer, orderBy, limit, deleteDoc, where } from 'firebase/firestore';
+import { collection, getDocs, query, doc, onSnapshot, updateDoc, increment, addDoc, serverTimestamp, getCountFromServer, orderBy, limit, deleteDoc, where, getDoc, setDoc } from 'firebase/firestore';
 import { 
   Users, User, Award, Gem, TrendingUp, ShieldCheck, Activity, 
   Lock, Wallet, ArrowDownCircle, ArrowUpCircle, BarChart2, 
   PieChart, Info, AlertTriangle, CheckCircle2, Loader2, RefreshCw, PlusSquare,
   Mail, Key, KeyRound, Smartphone, BrainCircuit, FileText, Zap,
   Copy, ShieldAlert, ShieldOff, Settings, Plus, Trash2, XCircle, CheckCircle, Calendar, Clock,
-  Building2, Cpu, Globe, Database, Crown, Shield, Star, History, Sparkles, Radio, Unlock
+  Building2, Cpu, Globe, Database, Crown, Shield, Star, History, Sparkles, Radio, Unlock, PlusCircle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useAuth } from '../contexts/AuthContext';
@@ -18,7 +18,7 @@ import { useCurrencyConverter } from '../hooks/useCurrencyConverter';
 import { cn } from '../lib/utils';
 import { apiFetch } from '../lib/api';
 import { startAuthentication } from '@simplewebauthn/browser';
-import { getModerationSettings, saveModerationSettings, ModerationSettings } from "../services/moderationService";
+import { getModerationSettings, saveModerationSettings, ModerationSettings, defaultSettings } from "../services/moderationService";
 import { admin_logic, integrity_audit_engine, global_kill_switch } from "../lib/engines";
 import CreateWithdrawPinModal from "../components/CreateWithdrawPinModal";
 import OTPModal from "../components/tools/OTPModal";
@@ -43,6 +43,31 @@ interface UserData {
 export default function PlatformDashboard() {
   const navigate = useNavigate();
   const { currentUser, userData } = useAuth();
+
+  // Secondary security gate: Strictly only the developer's Gmail
+  if (currentUser && currentUser.email !== 'edwinmuoha@gmail.com') {
+    return (
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center p-6">
+        <div className="bg-slate-800 border border-red-500/30 p-12 rounded-[2.5rem] shadow-2xl max-w-lg w-full text-center">
+          <div className="inline-flex p-5 bg-red-500/10 rounded-full mb-6">
+            <Lock className="w-12 h-12 text-red-500" />
+          </div>
+          <h1 className="text-3xl font-black text-white uppercase tracking-tighter mb-4">Access Restricted</h1>
+          <p className="text-slate-400 text-lg leading-relaxed mb-8">
+            This terminal is strictly reserved for the developer's primary Gmail authentication. 
+            Unauthorized access detected and logged.
+          </p>
+          <button 
+            onClick={() => navigate('/')}
+            className="w-full py-4 bg-slate-700 hover:bg-slate-600 text-white font-bold rounded-2xl transition-all"
+          >
+            Return to Safety
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   const { addPlatformRevenue, addPlatformExpense } = useRevenue();
   const { convert, formatReward, rates } = useCurrencyConverter();
   const TARGET_STATIC_IP = "35.214.40.75";
@@ -123,8 +148,59 @@ export default function PlatformDashboard() {
   }, []);
 
   // Moderation Logic
-  const [modSettings, setModSettings] = useState<ModerationSettings>(getModerationSettings());
+  const [modSettings, setModSettings] = useState<ModerationSettings>(defaultSettings);
   const [newRule, setNewRule] = useState("");
+
+  useEffect(() => {
+    const loadSettings = async () => {
+      const settings = await getModerationSettings();
+      setModSettings(settings);
+    };
+    loadSettings();
+  }, []);
+
+  const [manualInflowAmount, setManualInflowAmount] = useState("");
+  const [manualInflowReason, setManualInflowReason] = useState("AdSense Revenue");
+
+  const handleInjectRevenue = async () => {
+    if (!db || !manualInflowAmount || Number(manualInflowAmount) <= 0) return;
+    setIsRefreshing(true);
+    try {
+      const amount = Number(manualInflowAmount);
+      
+      // 1. Log the transaction in platform_transactions
+      await addDoc(collection(db, 'platform_transactions'), {
+        type: 'platform_revenue',
+        totalAmount: amount,
+        platformAmount: amount,
+        userShare: 0,
+        reason: manualInflowReason,
+        source: 'External Manual Injection',
+        timestamp: serverTimestamp(),
+        serverSecret: "pulse-feeds-server-secret-2026"
+      });
+
+      // 2. Update platform stats
+      const statsRef = doc(db, "platform", "stats");
+      const statsSnap = await getDoc(statsRef);
+      if (statsSnap.exists()) {
+        const currentData = statsSnap.data();
+        await updateDoc(statsRef, {
+          totalInflow: (currentData.totalInflow || 0) + amount,
+          platformShare: (currentData.platformShare || 0) + amount,
+          lastManualInflow: serverTimestamp()
+        });
+      }
+
+      setSuccess(`Successfully injected ${formatCurrency(amount)} into platform treasury.`);
+      setManualInflowAmount("");
+      handleRefresh();
+    } catch (err: any) {
+      setError(`Revenue Injection Failed: ${err.message}`);
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
   const [userCount, setUserCount] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState<'financial' | 'withdrawals' | 'moderation' | 'infrastructure' | 'mitigation' | 'membership' | 'audit' | 'intelligence'>('financial');
   const [aiReport, setAiReport] = useState<string | null>(null);
@@ -512,14 +588,69 @@ export default function PlatformDashboard() {
     }
   }, [activeTab]);
 
-  const reports = [
-    { id: 1, user: 'Spammer123', reason: 'Inappropriate content', status: 'pending' },
-    { id: 2, user: 'FakeBot99', reason: 'Spam links', status: 'pending' },
-    { id: 3, user: 'AngryUser', reason: 'Harassment', status: 'resolved' },
-  ];
+  const [reports, setReports] = useState<any[]>([]);
 
-  const handleSaveModSettings = () => {
-    saveModerationSettings(modSettings);
+  const fetchReports = async () => {
+    if (!db) return;
+    try {
+      const q = query(collection(db, 'reports'), orderBy('timestamp', 'desc'), limit(50));
+      const snapshot = await getDocs(q);
+      setReports(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    } catch (e) {
+      console.warn("Failed to fetch reports:", e);
+    }
+  };
+
+  const handleResolveReport = async (reportId: string, action: 'approved' | 'rejected') => {
+    if (!db) return;
+    try {
+      await updateDoc(doc(db, 'reports', reportId), {
+        status: 'resolved',
+        resolution: action,
+        resolvedAt: serverTimestamp(),
+        resolvedBy: currentUser?.uid
+      });
+      setSuccess(`Report ${reportId} resolved as ${action}`);
+      fetchReports();
+    } catch (err: any) {
+      setError(`Failed to resolve report: ${err.message}`);
+    }
+  };
+
+  const handleInitializePlatform = async () => {
+    if (!db) return;
+    setIsRefreshing(true);
+    try {
+      const statsRef = doc(db, "platform", "stats");
+      const snap = await getDoc(statsRef);
+      if (!snap.exists()) {
+        await setDoc(statsRef, {
+          platformRevenue: 0,
+          platformShare: 0,
+          totalUserBalances: 0,
+          totalUsers: 0,
+          activeUsers: 0,
+          lastAudit: serverTimestamp(),
+          serverSecret: "pulse-feeds-server-secret-2026"
+        });
+        setSuccess("Platform Treasury Initialized successfully!");
+      } else {
+        setSuccess("Platform Treasury already exists. Running audit instead...");
+        await handleRecalculateEntireLedger();
+      }
+    } catch (err: any) {
+      setError(`Initialization Failed: ${err.message}`);
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchReports();
+  }, []);
+
+  const handleSaveModSettings = async () => {
+    await saveModerationSettings(modSettings);
     setSuccess("AI Moderation Settings Saved!");
     setTimeout(() => setSuccess(null), 3000);
   };
@@ -1595,7 +1726,7 @@ export default function PlatformDashboard() {
     );
   }
 
-  const isAdmin = currentUser?.email === 'edwinmuoha@gmail.com' || userData?.role === 'admin';
+  const isAdmin = currentUser?.email === 'edwinmuoha@gmail.com';
 
   if (!isDevUnlocked && !isAdmin) {
     return (
@@ -2999,6 +3130,112 @@ export default function PlatformDashboard() {
               </div>
             </div>
           </div>
+
+          {/* Revenue Inflow & Management */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="md:col-span-1 bg-white dark:bg-gray-800 p-8 rounded-[2rem] border border-gray-100 dark:border-gray-700 shadow-xl">
+              <div className="flex items-center gap-3 mb-6">
+                <div className="p-3 bg-emerald-50 dark:bg-emerald-900/20 rounded-2xl">
+                  <PlusCircle className="w-6 h-6 text-emerald-600" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-black text-gray-900 dark:text-white uppercase tracking-tight">Manual Revenue Injection</h3>
+                  <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">Add external funds to treasury</p>
+                </div>
+              </div>
+              
+              <div className="space-y-4">
+                <div>
+                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-1 ml-1">Amount (USDT)</label>
+                  <input 
+                    type="number"
+                    value={manualInflowAmount}
+                    onChange={(e) => setManualInflowAmount(e.target.value)}
+                    placeholder="0.00"
+                    className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-3 text-sm font-bold focus:border-emerald-500 outline-none transition-all"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-1 ml-1">Source / Reason</label>
+                  <select 
+                    value={manualInflowReason}
+                    onChange={(e) => setManualInflowReason(e.target.value)}
+                    className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-3 text-sm font-bold focus:border-emerald-500 outline-none transition-all"
+                  >
+                    <option value="AdSense Revenue">AdSense Revenue</option>
+                    <option value="Direct Advertiser Payment">Direct Advertiser Payment</option>
+                    <option value="External Investment">External Investment</option>
+                    <option value="Platform Fee Recovery">Platform Fee Recovery</option>
+                    <option value="Other Inflow">Other Inflow</option>
+                  </select>
+                </div>
+                <button
+                  onClick={handleInjectRevenue}
+                  disabled={!manualInflowAmount || Number(manualInflowAmount) <= 0 || isRefreshing}
+                  className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 text-white font-black rounded-xl text-xs uppercase tracking-widest shadow-lg shadow-emerald-600/20 active:scale-95 transition-all disabled:opacity-50"
+                >
+                  {isRefreshing ? "Injecting..." : "Inject Revenue"}
+                </button>
+              </div>
+            </div>
+
+            <div className="md:col-span-2 bg-white dark:bg-gray-800 rounded-[2rem] border border-gray-100 dark:border-gray-700 shadow-xl overflow-hidden">
+              <div className="p-6 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
+                <h3 className="text-sm font-black text-gray-900 dark:text-white uppercase tracking-tight flex items-center gap-2">
+                  <History className="w-5 h-5 text-indigo-500" />
+                  Platform Transaction Ledger
+                </h3>
+                <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Last 50 Records</span>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left">
+                  <thead className="bg-gray-50/50 dark:bg-gray-900/50 text-gray-400 text-[9px] font-black uppercase tracking-widest">
+                    <tr>
+                      <th className="px-6 py-3">Timestamp</th>
+                      <th className="px-6 py-3">Source / Target</th>
+                      <th className="px-6 py-3">Type</th>
+                      <th className="px-6 py-3 text-right">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                    {platformTransactions.length === 0 ? (
+                      <tr>
+                        <td colSpan={4} className="px-6 py-12 text-center text-gray-400 italic text-xs">No transactions recorded in ledger.</td>
+                      </tr>
+                    ) : (
+                      platformTransactions.slice(0, 50).map((tx) => (
+                        <tr key={tx.id} className="hover:bg-gray-50/50 dark:hover:bg-gray-900/50 transition-colors">
+                          <td className="px-6 py-3 text-[10px] font-mono text-gray-500">
+                            {tx.timestamp?.seconds ? new Date(tx.timestamp.seconds * 1000).toLocaleString() : 'Just now'}
+                          </td>
+                          <td className="px-6 py-3">
+                            <p className="text-xs font-bold text-gray-900 dark:text-white leading-tight">{tx.reason}</p>
+                            <p className="text-[9px] text-gray-500 uppercase tracking-widest">{tx.source || 'Pulse Platform'}</p>
+                          </td>
+                          <td className="px-6 py-3">
+                            <span className={cn(
+                              "px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-tighter",
+                              tx.type === 'revenue' || tx.type === 'platform_revenue' ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
+                            )}>
+                              {tx.type}
+                            </span>
+                          </td>
+                          <td className="px-6 py-3 text-right">
+                            <p className={cn(
+                              "text-xs font-black",
+                              tx.type === 'revenue' || tx.type === 'platform_revenue' ? "text-green-600" : "text-red-600"
+                            )}>
+                              {tx.type === 'revenue' || tx.type === 'platform_revenue' ? '+' : '-'}{formatCurrency(tx.totalAmount || tx.platformAmount || 0)}
+                            </p>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
           <AnimatePresence>
             {auditReport.health !== 'healthy' && (
               <motion.div 
@@ -3277,24 +3514,37 @@ export default function PlatformDashboard() {
               <h2 className="text-xl font-bold text-gray-900 dark:text-white">Reports Queue</h2>
             </div>
             <div className="divide-y divide-gray-100 dark:divide-gray-700">
-              {reports.map((report) => (
+              {reports.length === 0 ? (
+                <div className="p-12 text-center text-gray-400 italic text-sm">
+                  No active reports in queue. Global community is stable.
+                </div>
+              ) : reports.map((report) => (
                 <div key={report.id} className="p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors">
                   <div>
-                    <div className="font-bold text-gray-900 dark:text-white text-lg mb-1">{report.user}</div>
-                    <div className="text-gray-500 dark:text-gray-400">{report.reason}</div>
+                    <div className="font-bold text-gray-900 dark:text-white text-lg mb-1">{report.userName || report.user || 'Unknown User'}</div>
+                    <div className="text-gray-500 dark:text-gray-400 text-sm">{report.reason || report.content?.slice(0, 50) + '...'}</div>
+                    <div className="text-[10px] text-gray-400 mt-1 uppercase font-mono">ID: {report.id}</div>
                   </div>
                   <div className="flex items-center space-x-2">
                     {report.status === 'pending' ? (
                       <>
-                        <button className="p-2 bg-green-100 text-green-600 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400 dark:hover:bg-green-900/50 rounded-lg transition-colors" title="Approve/Ignore">
+                        <button 
+                          onClick={() => handleResolveReport(report.id, 'approved')}
+                          className="p-2 bg-green-100 text-green-600 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400 dark:hover:bg-green-900/50 rounded-lg transition-colors" title="Approve/Ignore"
+                        >
                           <CheckCircle className="w-5 h-5" />
                         </button>
-                        <button className="p-2 bg-red-100 text-red-600 hover:bg-red-200 dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-900/50 rounded-lg transition-colors" title="Ban/Delete">
+                        <button 
+                          onClick={() => handleResolveReport(report.id, 'rejected')}
+                          className="p-2 bg-red-100 text-red-600 hover:bg-red-200 dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-900/50 rounded-lg transition-colors" title="Ban/Delete"
+                        >
                           <XCircle className="w-5 h-5" />
                         </button>
                       </>
                     ) : (
-                      <span className="px-3 py-1 bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400 rounded-full text-sm font-medium uppercase tracking-wider">Resolved</span>
+                      <span className="px-3 py-1 bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400 rounded-full text-[10px] font-black uppercase tracking-widest border border-gray-200 dark:border-gray-600">
+                        Resolved: {report.resolution}
+                      </span>
                     )}
                   </div>
                 </div>
@@ -3505,6 +3755,28 @@ export default function PlatformDashboard() {
                 <div className="text-[10px] font-black bg-amber-200 text-amber-800 px-2 py-1 rounded uppercase">External Backend</div>
               </div>
             )}
+          </div>
+
+          {/* Platform Initialization Tool */}
+          <div className="bg-indigo-50 dark:bg-indigo-950/20 rounded-[2.5rem] p-8 border border-indigo-100 dark:border-indigo-900/30 shadow-xl">
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-6">
+              <div className="flex items-center gap-5">
+                <div className="p-4 bg-indigo-100 dark:bg-indigo-900/40 rounded-2xl">
+                  <Database className="w-8 h-8 text-indigo-600" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-black text-gray-900 dark:text-white uppercase tracking-tight">System Initialization</h3>
+                  <p className="text-sm text-gray-500 font-medium">Verify or repair the global platform treasury document and audit records.</p>
+                </div>
+              </div>
+              <button
+                onClick={handleInitializePlatform}
+                disabled={isRefreshing}
+                className="px-8 py-4 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-2xl text-xs uppercase tracking-[0.2em] shadow-lg shadow-indigo-600/20 active:scale-95 transition-all whitespace-nowrap"
+              >
+                {isRefreshing ? "Processing..." : "Run Treasury Initialize"}
+              </button>
+            </div>
           </div>
 
           <div className="bg-slate-900 rounded-[2.5rem] p-8 shadow-2xl relative overflow-hidden">
