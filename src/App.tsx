@@ -1,4 +1,4 @@
-import { HashRouter, Routes, Route, Navigate } from "react-router-dom";
+import { HashRouter, Routes, Route, Navigate, Link } from "react-router-dom";
 import React, { Suspense, lazy } from "react";
 import Layout from "./components/Layout";
 import SystemBoundary from "./components/SystemBoundary";
@@ -7,8 +7,9 @@ import { RevenueProvider } from "./contexts/RevenueContext";
 import { HealthProvider } from "./contexts/HealthContext";
 import { IntelligenceProvider } from "./contexts/IntelligenceContext";
 import ProtectedRoute from "./components/ProtectedRoute";
-import { Loader2 } from "lucide-react";
+import { Loader2, ShieldCheck } from "lucide-react";
 import { Analytics } from "./components/Analytics";
+import { motion } from "motion/react";
 
 // Lazy load pages
 const Home = lazy(() => import("./pages/Home"));
@@ -54,14 +55,55 @@ const GlobalHealthWrapper = () => {
 };
 
 const AdminRoute = ({ children }: { children: React.ReactNode }) => {
-  const { currentUser, userData, loading } = useAuth();
+  const { currentUser, loading, loginWithGoogle } = useAuth();
+  
   if (loading) return <LoadingFallback />;
   
   const isDeveloper = currentUser?.email === 'edwinmuoha@gmail.com';
   
-  if (!isDeveloper) {
-    return <Navigate to="/" replace />;
+  if (!currentUser || !isDeveloper) {
+    return (
+      <div className="min-h-screen bg-[#0f172a] flex items-center justify-center p-6 font-sans">
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="w-full max-w-md bg-[#1e293b] rounded-[3rem] p-10 shadow-2xl border border-white/5 text-center relative overflow-hidden"
+        >
+          {/* Decorative background element */}
+          <div className="absolute -top-24 -right-24 w-48 h-48 bg-blue-500/10 rounded-full blur-3xl"></div>
+          <div className="absolute -bottom-24 -left-24 w-48 h-48 bg-purple-500/10 rounded-full blur-3xl"></div>
+
+          <div className="relative z-10">
+            <div className="w-20 h-20 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-3xl flex items-center justify-center mx-auto mb-8 rotate-3 shadow-xl">
+              <ShieldCheck className="w-10 h-10 text-white" />
+            </div>
+
+            <h1 className="text-3xl font-black text-white mb-3 tracking-tight">Developer Gate</h1>
+            <p className="text-slate-400 text-lg mb-10 leading-relaxed">
+              This terminal is locked. Access is strictly reserved for the developer's verified Gmail account.
+            </p>
+
+            <button
+              onClick={() => loginWithGoogle()}
+              className="w-full py-5 bg-white text-slate-900 font-black rounded-2xl flex items-center justify-center gap-3 hover:bg-slate-100 transition-all active:scale-95 shadow-lg shadow-white/5"
+            >
+              <img src="https://www.google.com/favicon.ico" alt="Google" className="w-5 h-5" />
+              Sign in as Developer
+            </button>
+
+            <div className="mt-8 pt-8 border-t border-white/5">
+              <Link to="/" replace>
+                <button className="text-slate-500 hover:text-slate-300 text-sm font-bold transition-colors">
+                  Return to Main Application
+                </button>
+              </Link>
+            </div>
+          </div>
+        </motion.div>
+      </div>
+    );
   }
+  
   return <>{children}</>;
 };
 
