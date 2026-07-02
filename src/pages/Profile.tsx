@@ -21,6 +21,7 @@ export default function Profile() {
   const { currentUser, userData, logout } = useAuth();
   const { t } = useTranslation();
   const { convert } = useCurrencyConverter();
+  const { consistentPoints } = useRevenue();
   const navigate = useNavigate();
   const { posts, deletePost, updatePost } = usePosts();
   const [isEditingBio, setIsEditingBio] = useState(false);
@@ -443,11 +444,11 @@ export default function Profile() {
           </div>
           <div className="relative group">
             <div className="text-2xl font-bold text-gray-900 dark:text-white">
-              {convert(userData?.balance || 0)}
+              {convert(consistentPoints || 0)}
             </div>
             <div className="flex flex-col items-center">
               <div className="text-[10px] text-gray-500 dark:text-gray-400 uppercase tracking-wider font-bold">
-                {userData?.points || 0} {t('points_label')}
+                {Number(consistentPoints || 0).toFixed(4)} {t('points_label')}
               </div>
               
               {(userData?.points === 0 && !userData?.isPointsRecovered) && (

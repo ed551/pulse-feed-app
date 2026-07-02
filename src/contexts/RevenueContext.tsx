@@ -588,6 +588,7 @@ const addRevenue = async (userUsdAmount: number, platformUsdAmount: number, reas
         pendingUserValueRef.current += ACTIVE_POINTS_PER_SECOND;
         pendingPlatformValueRef.current += ACTIVE_POINTS_PER_SECOND; // 50/50 split
         setPendingPoints(pendingUserPointsRef.current);
+        setTotalEarnedToday(prev => prev + ACTIVE_POINTS_PER_SECOND);
 
         // Sync every interval
         if (Date.now() - lastSyncRef.current > SYNC_INTERVAL) {

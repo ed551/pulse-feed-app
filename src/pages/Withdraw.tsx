@@ -20,7 +20,13 @@ import { cn } from "../lib/utils";
 
 export default function Withdraw() {
   const { currentUser, userData } = useAuth();
-  const { consistentPoints, totalActiveTime, activeSeconds: sessionActiveSeconds } = useRevenue();
+  const { consistentPoints, totalActiveTime, activeSeconds: sessionActiveSeconds, syncActiveTimeRewards } = useRevenue();
+
+  useEffect(() => {
+    if (currentUser) {
+      syncActiveTimeRewards();
+    }
+  }, [currentUser]);
 
   const formatCurrency = (amount: number) => {
     return `USDT ${Number(amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 6 })}`;
@@ -104,6 +110,10 @@ export default function Withdraw() {
   const executePayoutRequest = async (tokenValue: string, amountToWithdraw: number) => {
     setWithdrawLoading(true);
     setWithdrawError("");
+    
+    // Force a final sync before payout to ensure DB is up to date
+    await syncActiveTimeRewards();
+    
     const withdrawVal = amountToWithdraw;
 
     try {
