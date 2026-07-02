@@ -11,6 +11,7 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { useTranslation } from "../lib/i18n";
 import { usePosts } from "../hooks/usePosts";
+import { useRevenue } from "../contexts/RevenueContext";
 import { db, handleFirestoreError, OperationType, storage } from "../lib/firebase";
 import { doc, updateDoc, serverTimestamp } from "firebase/firestore";
 import { ref, uploadString, getDownloadURL } from "firebase/storage";
