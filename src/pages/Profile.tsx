@@ -564,7 +564,7 @@ export default function Profile() {
                   ? "text-indigo-700 dark:text-indigo-400" 
                   : userData?.membershipLevel === 'silver'
               )}>
-                {userData?.membershipLevel === 'gold' ? 'Market' : userData?.membershipLevel || 'Bronze'} {t('tier_label')}
+                {userData?.membershipLevel === 'diamond' ? 'Diamond' : userData?.membershipLevel === 'gold' ? 'Gold' : userData?.membershipLevel || 'Bronze'} {t('tier_label')}
               </h3>
               <div className="flex items-center gap-4">
                 <div className="flex items-center gap-1.5">

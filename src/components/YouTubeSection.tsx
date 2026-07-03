@@ -16,51 +16,15 @@ interface MediaItem {
 
 const MEDIA_ITEMS: MediaItem[] = [
   // Curated spotlights
-  { id: 'spot-1', title: 'Community Feed', category: 'Spotlight', type: 'playlist', url: 'https://www.youtube.com/embed/videoseries?list=PLJKQ-nLJ-21LgxH8A-7YMFZuZhUnLuGHY', description: 'Curated community playlist updates and event recordings.' },
-  { id: 'spot-2', title: 'Beautiful Wonders', category: 'Spotlight', type: 'video', url: 'https://www.youtube.com/embed/dQw4w9WgXcQ', description: 'Cinematic visual experience of nature and wonders.' },
+  { id: 'spot-1', title: 'Community Feed', category: 'Spotlight', type: 'playlist', url: 'https://www.youtube.com/embed/videoseries?list=PL4cUxeGkcC9jx2-BHq9u6rax7X6KdfTuR', description: 'Curated community playlist updates and event recordings.' },
+  { id: 'spot-2', title: 'World News Hub', category: 'Spotlight', type: 'video', url: 'https://www.youtube.com/embed/5qap5aO4i9A', description: 'Global highlights and community spotlight.' },
   { id: 'spot-3', title: 'Global Tech Insights', category: 'Spotlight', type: 'video', url: 'https://www.youtube.com/embed/qgehB8b_K1U', description: 'Latest breakthroughs in technology, AI and science.' },
-  { id: 'spot-4', title: 'Master Classes', category: 'Spotlight', type: 'playlist', url: 'https://www.youtube.com/embed/videoseries?list=PL4cUxeGkcC9jx2-BHq9u6rax7X6KdfTuR', description: 'Educational deep-dives and development bootcamps.' },
-  { id: 'spot-5', title: 'Community Spotlight', category: 'Spotlight', type: 'video', url: 'https://www.youtube.com/embed/5qap5aO4i9A', description: 'Featured creator highlights from our digital cooperations.' },
+  { id: 'spot-4', title: 'Master Classes', category: 'Spotlight', type: 'playlist', url: 'https://www.youtube.com/embed/videoseries?list=PLJKQ-nLJ-21LgxH8A-7YMFZuZhUnLuGHY', description: 'Educational deep-dives and development bootcamps.' },
+  { id: 'spot-5', title: 'AI Innovations', category: 'Spotlight', type: 'video', url: 'https://www.youtube.com/embed/dQw4w9WgXcQ', description: 'Exploring the future of artificial intelligence.' },
 
-  // Live TV Channels (everything the 2nd screen had!)
+  // Live TV Channels
   {
     id: 'tv-1',
-    title: 'KBC TV Live',
-    category: 'Live TV',
-    type: 'live',
-    url: 'https://www.youtube.com/embed/live_stream?channel=UC5l4yN126m5t8_t37Q_r-qA',
-    description: 'Kenya Broadcasting Corporation - National broadcaster.',
-    thumbnail: 'https://images.unsplash.com/photo-1594909122845-11baa439b7bf?w=400&auto=format&fit=crop&q=60'
-  },
-  {
-    id: 'tv-2',
-    title: 'KTN News Live',
-    category: 'Live TV',
-    type: 'live',
-    url: 'https://www.youtube.com/embed/live_stream?channel=UC4w92T8t5Kz4v8825s34t-A',
-    description: 'KTN News - 24-hour news channel from Kenya.',
-    thumbnail: 'https://images.unsplash.com/photo-1574958269340-fa927503f3dd?w=400&auto=format&fit=crop&q=60'
-  },
-  {
-    id: 'tv-3',
-    title: 'Citizen TV Live',
-    category: 'Live TV',
-    type: 'live',
-    url: 'https://www.youtube.com/embed/live_stream?channel=UCtJ-gJ71rE53q2iT-M-7V-A',
-    description: 'Citizen TV Kenya - Most watched station.',
-    thumbnail: 'https://images.unsplash.com/photo-1557200134-903274290370?w=400&auto=format&fit=crop&q=60'
-  },
-  {
-    id: 'tv-4',
-    title: 'NTV Kenya Live',
-    category: 'Live TV',
-    type: 'live',
-    url: 'https://www.youtube.com/embed/live_stream?channel=UCYp7X87A-S_O00_yN_6v_Yw',
-    description: 'NTV Kenya - Quality news and investigative reporting.',
-    thumbnail: 'https://images.unsplash.com/photo-1590602847861-f357a9332bbc?w=400&auto=format&fit=crop&q=60'
-  },
-  {
-    id: 'tv-5',
     title: 'Sky News Live',
     category: 'Live TV',
     type: 'live',
@@ -69,40 +33,40 @@ const MEDIA_ITEMS: MediaItem[] = [
     thumbnail: 'https://images.unsplash.com/photo-1585829365234-781fdec7619c?w=400&auto=format&fit=crop&q=60'
   },
   {
-    id: 'tv-6',
+    id: 'tv-2',
+    title: 'ABC News Live',
+    category: 'Live TV',
+    type: 'live',
+    url: 'https://www.youtube.com/embed/live_stream?channel=UC0D0xIIn9pU9r6iE4v7vWdA',
+    description: 'ABC News - 24/7 breaking news and live events.',
+    thumbnail: 'https://images.unsplash.com/photo-1574958269340-fa927503f3dd?w=400&auto=format&fit=crop&q=60'
+  },
+  {
+    id: 'tv-3',
     title: 'DW News Live',
     category: 'Live TV',
     type: 'live',
     url: 'https://www.youtube.com/embed/live_stream?channel=UCuZ4Dn06zhLBa7asCX_v-YQ',
-    description: 'Deutsche Welle - International news from Germany.',
+    description: 'DW News - International news and analysis from Germany.',
     thumbnail: 'https://images.unsplash.com/photo-1523991114538-8012da2964e5?w=400&auto=format&fit=crop&q=60'
   },
   {
-    id: 'tv-7',
-    title: 'Al Jazeera English',
+    id: 'tv-4',
+    title: 'Al Jazeera Live',
     category: 'Live TV',
     type: 'live',
     url: 'https://www.youtube.com/embed/live_stream?channel=UCNye-wNBqNL5ZzHSJj3l8Bg',
-    description: 'Al Jazeera English - Global news and analysis.',
+    description: 'Al Jazeera - Global news and analysis.',
     thumbnail: 'https://images.unsplash.com/photo-1594909122845-11baa439b7bf?w=400&auto=format&fit=crop&q=60'
   },
   {
-    id: 'tv-8',
-    title: 'France 24 English',
+    id: 'tv-5',
+    title: 'France 24 Live',
     category: 'Live TV',
     type: 'live',
     url: 'https://www.youtube.com/embed/live_stream?channel=UCQfwfsi5VrQ8yKZ-UWmAEFg',
-    description: 'France 24 - International news 24/7 in English.',
+    description: 'France 24 - International news in English.',
     thumbnail: 'https://images.unsplash.com/photo-1461896836934-ffe607ba8211?w=400&auto=format&fit=crop&q=60'
-  },
-  {
-    id: 'tv-9',
-    title: 'ABC News Australia',
-    category: 'Live TV',
-    type: 'live',
-    url: 'https://www.youtube.com/embed/live_stream?channel=UC0D0xIIn9pU9r6iE4v7vWdA',
-    description: 'ABC News - Australia\'s national broadcaster.',
-    thumbnail: 'https://images.unsplash.com/photo-1529107386315-e1a2ed48a620?w=400&auto=format&fit=crop&q=60'
   }
 ];
 

@@ -347,7 +347,7 @@ export default function Withdraw() {
                 <div className="mt-4 pt-4 border-t border-slate-900 grid grid-cols-2 gap-4">
                   <div className="space-y-1">
                     <p className="text-[9px] font-black uppercase tracking-widest text-slate-500">Session Earning</p>
-                    <p className="text-sm font-bold text-slate-300">USDT {(sessionActiveSeconds * (0.016 / 30)).toFixed(6)}</p>
+                    <p className="text-sm font-bold text-slate-300">USDT {((sessionActiveSeconds * 0.005) / 60).toFixed(6)}</p>
                   </div>
                   <div className="space-y-1 text-right">
                     <p className="text-[9px] font-black uppercase tracking-widest text-slate-500">Live Growth</p>

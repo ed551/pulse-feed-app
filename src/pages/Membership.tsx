@@ -55,12 +55,12 @@ const TIERS = [
       'Topic Group Creation',
       'Ad-Free Experience'
     ],
-    highlight: true,
+    highlight: false,
     benefit: 'The best balance for active earners and power users.'
   },
   {
     id: 'gold',
-    name: 'Market',
+    name: 'Gold',
     subtitle: 'Elite Pioneer',
     price: 30, // $30
     icon: Crown,
@@ -69,7 +69,7 @@ const TIERS = [
     borderColor: 'border-indigo-100 dark:border-indigo-900/20',
     btnBg: 'bg-gradient-to-r from-indigo-500 to-purple-600 text-white shadow-indigo-500/20',
     features: [
-      '80% Revenue Share (Max)',
+      '80% Revenue Share',
       'Quantum Market Prediction',
       'Zero Market Trading Fees',
       'Unlimited AI Tutoring',
@@ -77,8 +77,30 @@ const TIERS = [
       'Direct Dev Channels',
       'Monthly Bonus Drops'
     ],
-    highlight: false,
+    highlight: true,
     benefit: 'Maximize your potential and revenue with total access.'
+  },
+  {
+    id: 'diamond',
+    name: 'Diamond',
+    subtitle: 'Pulse Elite',
+    price: 100, // $100
+    icon: Gem,
+    color: 'text-rose-500',
+    bg: 'bg-rose-50 dark:bg-rose-900/10',
+    borderColor: 'border-rose-100 dark:border-rose-900/20',
+    btnBg: 'bg-gradient-to-r from-rose-500 via-purple-600 to-indigo-700 text-white shadow-rose-500/20',
+    features: [
+      '100% Revenue Share (Max)',
+      'Omni-Neural AI Access',
+      'Global Profit Sharing',
+      'Personal Account Manager',
+      'Diamond Verified Crest',
+      'Beta Feature Access',
+      'Exclusive Annual Events'
+    ],
+    highlight: false,
+    benefit: 'The ultimate tier for those who demand absolute performance.'
   }
 ];
 
@@ -147,7 +169,8 @@ export default function Membership() {
           <div className="relative z-10 flex flex-col md:flex-row items-center gap-8">
             <div className="shrink-0">
               <div className="w-24 h-24 rounded-[2rem] bg-indigo-500/20 backdrop-blur-xl border border-white/10 flex items-center justify-center shadow-lg">
-                {currentTier === 'gold' ? <Crown className="w-12 h-12 text-indigo-500" /> : 
+                {currentTier === 'diamond' ? <Gem className="w-12 h-12 text-rose-500" /> :
+                 currentTier === 'gold' ? <Crown className="w-12 h-12 text-indigo-500" /> : 
                  currentTier === 'silver' ? <Star className="w-12 h-12 text-blue-400" /> : 
                  <Shield className="w-12 h-12 text-orange-400" />}
               </div>
@@ -320,8 +343,12 @@ export default function Membership() {
                 <span className="text-sm font-black dark:text-white">50%</span>
               </div>
               <div className="flex justify-between items-center">
-                <span className="text-xs font-bold text-gray-600 dark:text-gray-400">Market</span>
+                <span className="text-xs font-bold text-gray-600 dark:text-gray-400">Gold</span>
                 <span className="text-sm font-black dark:text-white">80%</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-xs font-bold text-gray-600 dark:text-gray-400">Diamond</span>
+                <span className="text-sm font-black dark:text-white">100%</span>
               </div>
             </div>
           </div>
@@ -338,8 +365,12 @@ export default function Membership() {
                 <span className="text-[10px] font-black bg-blue-100 dark:bg-blue-900/30 text-blue-600 px-2 py-0.5 rounded uppercase tracking-tighter">Priority</span>
               </div>
               <div className="flex justify-between items-center">
-                <span className="text-xs font-bold text-gray-600 dark:text-gray-400">Market</span>
+                <span className="text-xs font-bold text-gray-600 dark:text-gray-400">Gold</span>
                 <span className="text-[10px] font-black bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 px-2 py-0.5 rounded uppercase tracking-tighter">Quantum</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-xs font-bold text-gray-600 dark:text-gray-400">Diamond</span>
+                <span className="text-[10px] font-black bg-rose-100 dark:bg-rose-900/30 text-rose-600 px-2 py-0.5 rounded uppercase tracking-tighter">Neural</span>
               </div>
             </div>
           </div>
@@ -356,8 +387,12 @@ export default function Membership() {
                 <span className="text-[10px] font-black dark:text-white">Fingerprint Engr.</span>
               </div>
               <div className="flex justify-between items-center">
-                <span className="text-xs font-bold text-gray-600 dark:text-gray-400">Market</span>
+                <span className="text-xs font-bold text-gray-600 dark:text-gray-400">Gold</span>
                 <span className="text-[10px] font-black dark:text-white">Elite Protocol</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-xs font-bold text-gray-600 dark:text-gray-400">Diamond</span>
+                <span className="text-[10px] font-black dark:text-white">Neural Key</span>
               </div>
             </div>
           </div>

@@ -2816,7 +2816,8 @@ export default function PlatformDashboard() {
                       <td className="py-4">
                         <span className={cn(
                           "px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest",
-                          user.membershipLevel === 'gold' ? "bg-yellow-100 text-yellow-600" :
+                          user.membershipLevel === 'diamond' ? "bg-rose-100 text-rose-600" :
+                          user.membershipLevel === 'gold' ? "bg-indigo-100 text-indigo-600" :
                           user.membershipLevel === 'silver' ? "bg-blue-100 text-blue-600" :
                           user.membershipLevel === 'bronze' ? "bg-orange-100 text-orange-600" :
                           "bg-purple-100 text-purple-600"
