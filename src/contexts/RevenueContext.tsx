@@ -136,8 +136,22 @@ export const RevenueProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const EARNING_INTERVAL = 1000; // Track every second locally for UI
   const SYNC_INTERVAL = 300000; // Sync rewards to DB every 5 mins
   const TIME_SYNC_INTERVAL = 60000; // Sync active time every 1 min
-  const ACTIVE_POINTS_PER_SECOND = 0.016 / 30; // ~0.00053 USDT per second
   
+  // Dynamic Rate: 0.005 USDT per minute base total.
+  // User gets 80% if Gold, 10% if Diamond, etc. (Match server.ts)
+  const getActiveRatePerSecond = () => {
+    const membership = (userData?.membershipLevel || 'diamond').toLowerCase();
+    let userSplit = 0.1;
+    if (membership === 'gold') userSplit = 0.8;
+    else if (membership === 'silver') userSplit = 0.5;
+    else if (membership === 'bronze') userSplit = 0.3;
+    else if (membership === 'diamond') userSplit = 0.1;
+    
+    const baseRatePerMin = 0.005;
+    const baseRatePerSec = baseRatePerMin / 60;
+    return baseRatePerSec * userSplit;
+  };
+
   const monitorBehaviorWithAI = async () => {
     if (!currentUser || isAnalyzingBehavior || Date.now() - lastBehaviorCheckRef.current < 60000) return;
     
@@ -237,24 +251,23 @@ export const RevenueProvider: React.FC<{ children: React.ReactNode }> = ({ child
     pendingPlatformValueRef.current = 0;
     lastSyncRef.current = Date.now();
 
+    const userValUsd = userVal;
+    const platValUsd = platVal;
+    const totalValUsd = userValUsd + platValUsd;
+
     try {
       const userRef = doc(db, 'users', currentUser.uid);
       const statsRef = doc(db, 'platform', 'stats');
 
-      // These values are already in USD from the accumulation loop
-      const userValUsd = userVal;
-      const platValUsd = platVal;
-      const totalValUsd = userValUsd + platValUsd;
+      // Update optimistic offset before resetting pending points to ensure atomic transition
+      setOptimisticPointsOffset(prev => prev + userPts);
+      setPendingPoints(0);
 
       await updateDoc(userRef, {
         points: increment(userPts),
         balance: increment(userValUsd),
         activeTimeRevenue: increment(userValUsd)
       });
-      
-      // Update optimistic offset before resetting pending points to ensure atomic transition
-      setOptimisticPointsOffset(prev => prev + userPts);
-      setPendingPoints(0);
 
       // User-specific Points Ledger
       await addDoc(collection(db, 'users', currentUser.uid, 'points_ledger'), {
@@ -565,8 +578,8 @@ const addRevenue = async (userUsdAmount: number, platformUsdAmount: number, reas
   }, []);
 
   useEffect(() => {
-    // Disabled frontend earning interval.
-    // Relying solely on `/api/user/time-reward` called from Layout.tsx for accurate, single-source rewards.
+    // Frontend earning engine active.
+    // Syncs batched points to Firestore every 5 minutes.
     if (earningIntervalRef.current) {
       clearInterval(earningIntervalRef.current);
     }
@@ -579,16 +592,17 @@ const addRevenue = async (userUsdAmount: number, platformUsdAmount: number, reas
   useEffect(() => {
     const interval = setInterval(() => {
       if (!isIdle && !pointsLocked && currentUser) {
+        const rate = getActiveRatePerSecond();
         activeSecondsRef.current += 1;
         setSessionActiveSeconds(activeSecondsRef.current);
         setTotalActiveTime(prev => prev + 1);
 
         // Accumulate pending points
-        pendingUserPointsRef.current += ACTIVE_POINTS_PER_SECOND;
-        pendingUserValueRef.current += ACTIVE_POINTS_PER_SECOND;
-        pendingPlatformValueRef.current += ACTIVE_POINTS_PER_SECOND; // 50/50 split
+        pendingUserPointsRef.current += rate;
+        pendingUserValueRef.current += rate;
+        pendingPlatformValueRef.current += rate * (1/0.8 - 1); // Maintain ratio
         setPendingPoints(pendingUserPointsRef.current);
-        setTotalEarnedToday(prev => prev + ACTIVE_POINTS_PER_SECOND);
+        setTotalEarnedToday(prev => prev + rate);
 
         // Sync every interval
         if (Date.now() - lastSyncRef.current > SYNC_INTERVAL) {

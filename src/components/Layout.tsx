@@ -124,39 +124,10 @@ export default function Layout() {
     return () => window.removeEventListener('pulse-app-lock', handleLockRequest);
   }, [currentUser?.email]);
 
-  // Active time tracking for rewards
+  // Active time tracking for rewards is handled centrally in RevenueContext.tsx
+  // to ensure real-time synchronization and prevent double-counting.
   useEffect(() => {
-    if (!currentUser || isIdle) return;
-    
-    // Reward 0.005 USDT for every 1 minute of active time spent in app
-    const interval = setInterval(async () => {
-      if (!currentUser || isIdle) return;
-      
-      const sendReward = async (attempt: number): Promise<void> => {
-        try {
-          const response = await apiFetch('/api/user/time-reward', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ userId: currentUser.uid })
-          });
-          
-          if (!response.ok) {
-            throw new Error(`Reward API returned ${response.status}`);
-          }
-        } catch (e) {
-          if (attempt < 3) {
-            console.warn(`Failed to add time reward, retrying in 5s... (attempt ${attempt + 1})`);
-            await new Promise(resolve => setTimeout(resolve, 5000));
-            return sendReward(attempt + 1);
-          }
-          console.error("Failed to add time reward after retries:", e);
-        }
-      };
-      
-      sendReward(0);
-    }, 60000); // 1 minute
-
-    return () => clearInterval(interval);
+    // Logic moved to RevenueContext.tsx
   }, [currentUser, isIdle]);
 
   const [circuitBreaker, setCircuitBreaker] = useState(getAIBreakerStatus());

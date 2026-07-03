@@ -29,80 +29,80 @@ const MEDIA_ITEMS: MediaItem[] = [
     category: 'Live TV',
     type: 'live',
     url: 'https://www.youtube.com/embed/live_stream?channel=UC5l4yN126m5t8_t37Q_r-qA',
-    description: 'Kenya Broadcasting Corporation - News and national content.',
+    description: 'Kenya Broadcasting Corporation - National broadcaster.',
     thumbnail: 'https://images.unsplash.com/photo-1594909122845-11baa439b7bf?w=400&auto=format&fit=crop&q=60'
   },
   {
     id: 'tv-2',
-    title: 'KTN TV Live',
+    title: 'KTN News Live',
     category: 'Live TV',
     type: 'live',
     url: 'https://www.youtube.com/embed/live_stream?channel=UC4w92T8t5Kz4v8825s34t-A',
-    description: 'Kenya Television Network - News and entertainment.',
+    description: 'KTN News - 24-hour news channel from Kenya.',
     thumbnail: 'https://images.unsplash.com/photo-1574958269340-fa927503f3dd?w=400&auto=format&fit=crop&q=60'
   },
   {
     id: 'tv-3',
-    title: 'CITIZEN TV Live',
+    title: 'Citizen TV Live',
     category: 'Live TV',
     type: 'live',
     url: 'https://www.youtube.com/embed/live_stream?channel=UCtJ-gJ71rE53q2iT-M-7V-A',
-    description: 'Citizen TV Kenya - Breaking news and high quality productions.',
+    description: 'Citizen TV Kenya - Most watched station.',
     thumbnail: 'https://images.unsplash.com/photo-1557200134-903274290370?w=400&auto=format&fit=crop&q=60'
   },
   {
     id: 'tv-4',
-    title: 'K24 TV Live',
+    title: 'NTV Kenya Live',
     category: 'Live TV',
     type: 'live',
-    url: 'https://www.youtube.com/embed/live_stream?channel=UCeZ1zQ7B05C725-5M9j2KjQ',
-    description: 'K24 - Kenya\'s innovative news and entertainment.',
+    url: 'https://www.youtube.com/embed/live_stream?channel=UCYp7X87A-S_O00_yN_6v_Yw',
+    description: 'NTV Kenya - Quality news and investigative reporting.',
     thumbnail: 'https://images.unsplash.com/photo-1590602847861-f357a9332bbc?w=400&auto=format&fit=crop&q=60'
   },
   {
     id: 'tv-5',
-    title: 'INOORO TV Live',
+    title: 'Sky News Live',
     category: 'Live TV',
     type: 'live',
-    url: 'https://www.youtube.com/embed/live_stream?channel=UC6k78vQ9018428574109721',
-    description: 'Inooro TV - Vernacular news and culture.',
-    thumbnail: 'https://images.unsplash.com/photo-1507238691740-187a5b1d37b8?w=400&auto=format&fit=crop&q=60'
+    url: 'https://www.youtube.com/embed/live_stream?channel=UCm638niU6R-9vK71rXp_v2A',
+    description: 'Sky News - Global breaking news from the UK.',
+    thumbnail: 'https://images.unsplash.com/photo-1585829365234-781fdec7619c?w=400&auto=format&fit=crop&q=60'
   },
   {
     id: 'tv-6',
-    title: 'KAMEME TV Live',
+    title: 'DW News Live',
     category: 'Live TV',
     type: 'live',
-    url: 'https://www.youtube.com/embed/live_stream?channel=UC6k78vQ9018428574109722',
-    description: 'Kameme TV - Vernacular news and culture.',
-    thumbnail: 'https://images.unsplash.com/photo-1581481615162-81734913f019?w=400&auto=format&fit=crop&q=60'
+    url: 'https://www.youtube.com/embed/live_stream?channel=UCuZ4Dn06zhLBa7asCX_v-YQ',
+    description: 'Deutsche Welle - International news from Germany.',
+    thumbnail: 'https://images.unsplash.com/photo-1523991114538-8012da2964e5?w=400&auto=format&fit=crop&q=60'
   },
   {
     id: 'tv-7',
-    title: 'RAMOGI TV Live',
+    title: 'Al Jazeera English',
     category: 'Live TV',
     type: 'live',
-    url: 'https://www.youtube.com/embed/live_stream?channel=UC6k78vQ9018428574109723',
-    description: 'Ramogi TV - Vernacular news and culture.',
-    thumbnail: 'https://images.unsplash.com/photo-1616469829999-c52251ea79a2?w=400&auto=format&fit=crop&q=60'
-  },
-  {
-    id: 'tv-8',
-    title: 'MERU TV Live',
-    category: 'Live TV',
-    type: 'live',
-    url: 'https://www.youtube.com/embed/live_stream?channel=UC6k78vQ9018428574109724',
-    description: 'Meru TV - Vernacular news and culture.',
+    url: 'https://www.youtube.com/embed/live_stream?channel=UCNye-wNBqNL5ZzHSJj3l8Bg',
+    description: 'Al Jazeera English - Global news and analysis.',
     thumbnail: 'https://images.unsplash.com/photo-1594909122845-11baa439b7bf?w=400&auto=format&fit=crop&q=60'
   },
   {
-    id: 'tv-9',
-    title: 'SUPER SPORTS TV Live',
+    id: 'tv-8',
+    title: 'France 24 English',
     category: 'Live TV',
     type: 'live',
-    url: 'https://www.youtube.com/embed/live_stream?channel=UC6k78vQ9018428574109725',
-    description: 'Super Sports - Live sports and events.',
+    url: 'https://www.youtube.com/embed/live_stream?channel=UCQfwfsi5VrQ8yKZ-UWmAEFg',
+    description: 'France 24 - International news 24/7 in English.',
     thumbnail: 'https://images.unsplash.com/photo-1461896836934-ffe607ba8211?w=400&auto=format&fit=crop&q=60'
+  },
+  {
+    id: 'tv-9',
+    title: 'ABC News Australia',
+    category: 'Live TV',
+    type: 'live',
+    url: 'https://www.youtube.com/embed/live_stream?channel=UC0D0xIIn9pU9r6iE4v7vWdA',
+    description: 'ABC News - Australia\'s national broadcaster.',
+    thumbnail: 'https://images.unsplash.com/photo-1529107386315-e1a2ed48a620?w=400&auto=format&fit=crop&q=60'
   }
 ];
 
@@ -459,6 +459,7 @@ export default function YouTubeSection() {
                       frameBorder="0"
                       allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
                       allowFullScreen
+                      referrerPolicy="no-referrer"
                       className="relative z-10 w-full h-full"
                     ></iframe>
                   </motion.div>

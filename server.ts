@@ -984,7 +984,6 @@ async function generateContentWithRetry(params: any): Promise<any> {
         
         // Key Rotation on Blocked/Billing/Quota failure
         if (isBlocked || isDepleted || status === 429 || status === 402 || isQuotaExceeded) {
-          retries++;
           const oldIndex = currentKeyIndex;
           
           // Rotate keys on any quota/billing failure to spread load
@@ -1050,10 +1049,6 @@ async function generateContentWithRetry(params: any): Promise<any> {
             } else if (currentModel === 'gemini-3-flash-preview') {
               params.model = 'gemini-3.1-pro-preview';
             } else if (currentModel === 'gemini-3.1-pro-preview') {
-              params.model = 'gemini-1.5-flash';
-            } else if (currentModel === 'gemini-1.5-flash') {
-              params.model = 'gemini-1.5-pro';
-            } else if (currentModel === 'gemini-1.5-pro') {
               params.model = 'gemini-2.0-flash-exp';
             } else {
               params.model = 'gemini-3.5-flash';
@@ -2162,7 +2157,7 @@ async function startServer() {
 
       const platformSplit = 1 - userSplit;
 
-      const baseTotalAmount = 0.010; 
+      const baseTotalAmount = 0.005; // 0.005 USDT per minute base total
       const userAmount = baseTotalAmount * userSplit;
       const platformAmount = baseTotalAmount * platformSplit;
       const totalAmount = baseTotalAmount;

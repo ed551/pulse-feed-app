@@ -275,10 +275,6 @@ export async function generateContentWithRetry(params: any): Promise<any> {
             } else if (currentModel === 'gemini-3-flash-preview') {
               params.model = 'gemini-3.1-pro-preview';
             } else if (currentModel === 'gemini-3.1-pro-preview') {
-              params.model = 'gemini-1.5-flash';
-            } else if (currentModel === 'gemini-1.5-flash') {
-              params.model = 'gemini-1.5-pro';
-            } else if (currentModel === 'gemini-1.5-pro') {
               params.model = 'gemini-2.0-flash-exp';
             } else {
               params.model = 'gemini-3.5-flash';
