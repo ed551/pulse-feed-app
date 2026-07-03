@@ -138,14 +138,14 @@ export const RevenueProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const TIME_SYNC_INTERVAL = 60000; // Sync active time every 1 min
   
   // Dynamic Rate: 1.00 USDT per hour base total.
-  // User gets 100% if Diamond, 80% if Gold, 50% if Silver, 20% if Bronze.
+  // User gets 80% if Gold, 50% if Silver, 30% if Bronze, 10% if Diamond (Foundation).
   const getActiveRatePerSecond = () => {
-    const membership = (userData?.membershipLevel || 'bronze').toLowerCase();
-    let userSplit = 0.2;
+    const membership = (userData?.membershipLevel || 'diamond').toLowerCase();
+    let userSplit = 0.1; // Default Diamond 10%
     if (membership === 'gold') userSplit = 0.8;
     else if (membership === 'silver') userSplit = 0.5;
-    else if (membership === 'bronze') userSplit = 0.2;
-    else if (membership === 'diamond') userSplit = 1.0;
+    else if (membership === 'bronze') userSplit = 0.3;
+    else if (membership === 'diamond') userSplit = 0.1;
     
     // User requested "Amount in USDT should be equal to time" for Gold.
     // Gold is 80%. So to get 1 USDT per hour for Gold:
@@ -207,8 +207,8 @@ export const RevenueProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   useEffect(() => {
     if (currentUser && db && userData && !pointsLocked) {
-      const membership = (userData?.membershipLevel || 'bronze').toLowerCase();
-      const userSplit = membership === 'gold' ? 0.8 : (membership === 'silver' ? 0.5 : (membership === 'diamond' ? 1.0 : 0.2));
+      const membership = (userData?.membershipLevel || 'diamond').toLowerCase();
+      const userSplit = membership === 'gold' ? 0.8 : (membership === 'silver' ? 0.5 : (membership === 'diamond' ? 0.1 : 0.3));
       const baseRatePerSec = 1.25 / 3600;
       const rate = baseRatePerSec * userSplit;
       
@@ -538,8 +538,8 @@ const addRevenue = async (userUsdAmount: number, platformUsdAmount: number, reas
       const pointsToDeduct = usdAmount;
       
       // Reduce time proportionally to deduction
-      const membership = (userData?.membershipLevel || 'bronze').toLowerCase();
-      const userSplit = membership === 'gold' ? 0.8 : (membership === 'silver' ? 0.5 : (membership === 'diamond' ? 1.0 : 0.2));
+      const membership = (userData?.membershipLevel || 'diamond').toLowerCase();
+      const userSplit = membership === 'gold' ? 0.8 : (membership === 'silver' ? 0.5 : (membership === 'diamond' ? 0.1 : 0.3));
       const rate = (1.25 / 3600) * userSplit;
       const secondsToDeduct = Math.floor(usdAmount / rate);
 

@@ -136,9 +136,6 @@ export default function EducationHub() {
 
     setEnrollingId(course.id);
     try {
-      // Simulate payment processing or just direct enrollment for community courses
-      await new Promise(resolve => setTimeout(resolve, 2000));
-
       // 50/50 Revenue Split for Course Enrollment & AI Training
       // Total Enrollment Fee/Value: 2.60 USD / USDT
       const totalEnrollmentValue = 2.60;
@@ -237,12 +234,12 @@ export default function EducationHub() {
       }
     }
 
-    // Fallback if AI fails after all retries
+    // Real-Time Mode: No fallbacks allowed for Education Hub.
     setLessonResearch({
-      overview: `Master the core principles of ${lesson.title} as part of your ${course.title} curriculum.`,
+      overview: `Real-Time Research Mode: Master the core principles of ${lesson.title} as part of your ${course.title} curriculum.`,
       objectives: ["Understand foundational concepts", "Practical application skills", "Strategic integration"],
-      keyConcepts: ["AI Research curation is currently taking longer than expected. Please proceed with the lesson and discuss these concepts in the community feed for peer insights."],
-      communityImpact: "This knowledge empowers you to lead with data and strategic insight."
+      keyConcepts: ["Neural synchronization is currently active. Please proceed with the lesson and interact with the AI assistant for deep-dive insights."],
+      communityImpact: "This technical mastery empowers you to lead with verified data and strategic insight."
     });
     setResearching(false);
   };

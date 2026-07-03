@@ -16,6 +16,28 @@ import { db } from '../lib/firebase';
 
 const TIERS = [
   {
+    id: 'diamond',
+    name: 'Diamond',
+    subtitle: 'Foundation Level',
+    price: 0, // Free
+    icon: Gem,
+    color: 'text-slate-400',
+    bg: 'bg-slate-50 dark:bg-slate-900/10',
+    borderColor: 'border-slate-100 dark:border-slate-900/20',
+    btnBg: 'bg-slate-200 dark:bg-slate-700 text-slate-900 dark:text-white',
+    features: [
+      '10% Revenue Share',
+      'Basic AI Sandboxing',
+      'Standard Event Access',
+      'Community Read-Only',
+      'Entry Level Status',
+      'Verified Entry Crest',
+      'Standard Education Access'
+    ],
+    highlight: false,
+    benefit: 'The free foundation level for all Pulse Feeds members.'
+  },
+  {
     id: 'gold',
     name: 'Gold',
     subtitle: 'Elite Pioneer',
@@ -70,7 +92,7 @@ const TIERS = [
     borderColor: 'border-orange-100 dark:border-orange-900/20',
     btnBg: 'bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white',
     features: [
-      '20% Revenue Share',
+      '30% Revenue Share',
       'Standard Market Analytics',
       'Daily Task Rewards',
       'Basic AI Support',
@@ -79,28 +101,6 @@ const TIERS = [
     ],
     highlight: false,
     benefit: 'Perfect for getting started and earning from the community.'
-  },
-  {
-    id: 'diamond',
-    name: 'Diamond',
-    subtitle: 'Entry Restricted',
-    price: 0, // Free / Restricted
-    icon: Gem,
-    color: 'text-slate-400',
-    bg: 'bg-slate-50 dark:bg-slate-900/10',
-    borderColor: 'border-slate-100 dark:border-slate-900/20',
-    btnBg: 'bg-slate-200 dark:bg-slate-700 text-slate-900 dark:text-white',
-    features: [
-      '10% Revenue Share (Entry)',
-      'Basic AI Sandboxing',
-      'Standard Event Access',
-      'Community Read-Only',
-      'No Profit Sharing',
-      'Verified Entry Crest',
-      'Monthly Earning Cap'
-    ],
-    highlight: false,
-    benefit: 'The entry-level Pulse experience for restricted growth.'
   }
 ];
 
@@ -112,7 +112,7 @@ export default function Membership() {
   const navigate = useNavigate();
   const [loadingTier, setLoadingTier] = useState<string | null>(null);
 
-  const currentTier = userData?.membershipLevel || 'bronze';
+  const currentTier = userData?.membershipLevel || 'diamond';
 
   const handleUpgrade = async (tier: any) => {
     if (tier.id === currentTier) return;
@@ -200,8 +200,8 @@ export default function Membership() {
             </div>
             <div className="shrink-0 flex gap-4">
               <div className="text-center bg-white/5 backdrop-blur-md px-6 py-4 rounded-3xl border border-white/5">
-                <div className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1">Next Billing</div>
-                <div className="text-sm font-black italic">{getNextBillingDate()}</div>
+                <div className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1">Status</div>
+                <div className="text-sm font-black italic">{currentTier === 'diamond' ? 'Foundation' : 'Elite Access'}</div>
               </div>
             </div>
           </div>
@@ -242,8 +242,8 @@ export default function Membership() {
         <div className="grid grid-cols-2 gap-4 w-full md:w-auto">
           <div className="bg-white dark:bg-gray-800 p-4 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-700 flex flex-col items-center text-center">
             <TrendingUp className="w-6 h-6 text-indigo-500 mb-2" />
-            <div className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">Base Share</div>
-            <div className="text-lg font-black text-gray-900 dark:text-white">20%</div>
+            <div className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">Foundation Share</div>
+            <div className="text-lg font-black text-gray-900 dark:text-white">10%</div>
           </div>
           <div className="bg-white dark:bg-gray-800 p-4 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-700 flex flex-col items-center text-center">
             <Users className="w-6 h-6 text-indigo-500 mb-2" />

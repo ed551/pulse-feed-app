@@ -693,58 +693,16 @@ let LAST_GOLD_PRICE = 4452.34; // Fallback price per troy ounce (Sync with Binan
 function getSimulationResponse(promptParams: any) {
   const prompt = JSON.stringify(promptParams || {}).toLowerCase();
   
-  // Intelligence Simulation for Education Hub (Check for curriculum specifically)
-  if (prompt.includes("curriculum") || prompt.includes("lesson") || prompt.includes("course")) {
-    console.log("[Simulation] Mode Active (Education Hub)");
-    const simulatorJson = JSON.stringify({
-      title: "Digital Financial Ecosystems: Advanced Fundamentals",
-      description: "A comprehensive exploration of modern financial intelligence, focused on the Pulse Feeds ecosystem.",
-      overview: "Understanding the intersection of decentralized technology and community rewards.",
-      objectives: [
-        "Master the Pulse Feeds reward protocols",
-        "Analyze real-world problem detection logic",
-        "Apply financial intelligence to community growth"
-      ],
-      keyConcepts: [
-        "Social Equity Mining: How interaction translates to value.",
-        "The Gold Matrix: Synchronizing digital assets with real-world stability.",
-        "Decentralized Governance: Community-led decision systems."
-      ],
-      communityImpact: "This course empowers members to build sustainable financial futures within the collective.",
-      modules: [
-        { title: "Foundations of Pulse Feeds", content: "Understanding the balance between social interaction and financial rewards." },
-        { title: "Market Matrix Analysis", content: "Technical deep dives into gold and digital asset price synchronization." },
-        { title: "Community Problem Solving", content: "Leveraging decentralized networks to address real-world challenges." }
-      ]
-    });
-    return {
-      text: simulatorJson,
-      candidates: [{ content: { parts: [{ text: simulatorJson }] } }]
-    };
-  }
+  // User Requirement: No simulations in Education Hub and Gold Matrix
+  const isEdu = prompt.includes("curriculum") || prompt.includes("lesson") || prompt.includes("course") || prompt.includes("research") || prompt.includes("academic");
+  const isGoldMatrix = prompt.includes("gold") || prompt.includes("predict") || prompt.includes("paxg") || prompt.includes("chart") || prompt.includes("matrix");
 
-  // Intelligence Simulation for Gold Matrix
-  if (prompt.includes("gold") || prompt.includes("predict") || prompt.includes("paxg") || prompt.includes("chart")) {
-    console.log("[Simulation] Mode Active (Gold Matrix)");
-    const basePrice = LAST_GOLD_PRICE || 4452.34;
-    const simulatorJson = JSON.stringify({
-      usdt: {
-        p1d: { direction: "UP", confidence: 91, target: basePrice * 1.005, reasoning: "Positive accumulation delta vs BTC liquidity confirms breakout." },
-        p7d: { direction: "UP", confidence: 86, target: basePrice * 1.015, reasoning: "Structural trend projection remains highly profitable on all timeframes." },
-        p15d: { direction: "UP", confidence: 78, target: basePrice * 1.025, reasoning: "Neural momentum indicates secondary expansion phase is active." },
-        p30d: { direction: "UP", confidence: 82, target: basePrice * 1.045, reasoning: "Long-term bullish divergence remains the dominant market force." }
-      },
-      btc: {
-        p1d: { direction: "UP", confidence: 85, target: 0.071, reasoning: "BTC parity stabilizing near major support levels." },
-        p7d: { direction: "UP", confidence: 80, target: 0.072, reasoning: "Institutional rotation into gold-backed assets detected." },
-        p15d: { direction: "UP", confidence: 72, target: 0.074, reasoning: "Neural trend indicates ratio expansion." },
-        p30d: { direction: "UP", confidence: 75, target: 0.078, reasoning: "Long-term bullish divergence on the ratio chart." }
-      },
-      analysis: "The market is currently showing strong support at current levels with high accumulation interest."
-    });
+  if (isEdu || isGoldMatrix) {
+    console.warn(`[Simulation] Blocked for ${isEdu ? 'Education Hub' : 'Gold Matrix'} (Production Mode Required)`);
     return {
-      text: simulatorJson,
-      candidates: [{ content: { parts: [{ text: simulatorJson }] } }]
+      error: "Intelligence Simulation is disabled for this module. Production AI service is required for Real-Time Mode.",
+      status: 503,
+      isSimulationBlocked: true
     };
   }
 
@@ -757,30 +715,6 @@ function getSimulationResponse(promptParams: any) {
       { id: 'sim-3', title: 'Quantum Computing Educational Initiative', summary: 'Pulse Feeds ecosystem partners with tech giants for accessible STEM curriculum.', category: 'Edu', timestamp: '6h ago', impactLevel: 'high', scope: 'international', url: 'https://www.google.com/search?q=Quantum+Education' },
       { id: 'sim-4', title: 'Local Artisans Market Reaches New Highs', summary: 'Community-led marketplace sees 150% growth in peer-to-peer trade volume.', category: 'Tech', timestamp: '8h ago', impactLevel: 'medium', scope: 'local', url: 'https://www.google.com/search?q=Community+Marketplace+Growth' }
     ]);
-    return {
-      text: simulatorJson,
-      candidates: [{ content: { parts: [{ text: simulatorJson }] } }]
-    };
-  }
-
-  // Intelligence Simulation for Education Research
-  if (prompt.includes("research") || prompt.includes("lesson") || prompt.includes("academic")) {
-    console.log("[Simulation] Mode Active (Education Research)");
-    const simulatorJson = JSON.stringify({
-      overview: "Advanced synthesis of the requested educational module, focusing on practical application and theoretical depth.",
-      objectives: [
-        "Master the foundational principles and core logic of the topic.",
-        "Develop practical skills for enterprise integration and deployment.",
-        "Understand the socio-economic impact on the community ecosystem."
-      ],
-      keyConcepts: [
-        "Data integrity and normalization are crucial for large-scale operations.",
-        "Secure authentication mechanisms must be implemented at every infrastructure layer.",
-        "Scalability is achieved through modular architecture and efficient service routing.",
-        "Decentralized knowledge sharing accelerates community growth cycles."
-      ],
-      communityImpact: "This technical mastery empowers community members to contribute to a sustainable digital economy."
-    });
     return {
       text: simulatorJson,
       candidates: [{ content: { parts: [{ text: simulatorJson }] } }]
@@ -2133,11 +2067,11 @@ async function startServer() {
       
       // Determine Membership Level Split (Respecting User Prompt for Activity/Time Rewards)
       // User Prompt: "User revenue ... from time spent ... and activity ... if user is in Gold level Membership ... 20% for developer and 80% for user"
-      let userSplit = 0.2; // Default: 20% User (Bronze)
+      let userSplit = 0.1; // Default: 10% User (Diamond)
       if (userMembership === 'gold') userSplit = 0.8;
       else if (userMembership === 'silver') userSplit = 0.5;
-      else if (userMembership === 'bronze') userSplit = 0.2;
-      else if (userMembership === 'diamond') userSplit = 1.0;
+      else if (userMembership === 'bronze') userSplit = 0.3;
+      else if (userMembership === 'diamond') userSplit = 0.1;
 
       const platformSplit = 1 - userSplit;
 
@@ -2359,12 +2293,12 @@ async function startServer() {
         // And re-calibrate totalActiveTime to maintain proportionality
         // Rate: Gold user gets 1.0 USDT per 3600s (1 hour)
         // So 1 USDT = 3600 seconds.
-        const userMembership = userData?.membershipLevel || 'bronze';
-        let userSplit = 0.2;
+        const userMembership = userData?.membershipLevel || 'diamond';
+        let userSplit = 0.1;
         if (userMembership === 'gold') userSplit = 0.8;
         else if (userMembership === 'silver') userSplit = 0.5;
-        else if (userMembership === 'bronze') userSplit = 0.2;
-        else if (userMembership === 'diamond') userSplit = 1.0;
+        else if (userMembership === 'bronze') userSplit = 0.3;
+        else if (userMembership === 'diamond') userSplit = 0.1;
 
         const rate = (1.25 / 3600) * userSplit;
         const secondsToDeduct = Math.floor(requestedAmount / rate);
