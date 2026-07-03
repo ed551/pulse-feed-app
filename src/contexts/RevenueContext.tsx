@@ -141,13 +141,16 @@ export const RevenueProvider: React.FC<{ children: React.ReactNode }> = ({ child
   // User gets 100% if Diamond, 80% if Gold, 50% if Silver, 20% if Bronze.
   const getActiveRatePerSecond = () => {
     const membership = (userData?.membershipLevel || 'bronze').toLowerCase();
-    let userSplit = 0.1;
+    let userSplit = 0.2;
     if (membership === 'gold') userSplit = 0.8;
     else if (membership === 'silver') userSplit = 0.5;
     else if (membership === 'bronze') userSplit = 0.2;
-    else if (membership === 'diamond') userSplit = 0.1;
+    else if (membership === 'diamond') userSplit = 1.0;
     
-    const baseRatePerHour = 1.0;
+    // User requested "Amount in USDT should be equal to time" for Gold.
+    // Gold is 80%. So to get 1 USDT per hour for Gold:
+    // 1.0 / 0.8 = 1.25 USDT per hour base total.
+    const baseRatePerHour = 1.25;
     const baseRatePerSec = baseRatePerHour / 3600;
     return baseRatePerSec * userSplit;
   };
@@ -204,20 +207,33 @@ export const RevenueProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   useEffect(() => {
     if (currentUser && db && userData && !pointsLocked) {
-      const expectedPoints = userData.balance || 0;
-      const currentPoints = userData.points || 0;
-      const diff = Math.abs(expectedPoints - currentPoints);
+      const membership = (userData?.membershipLevel || 'bronze').toLowerCase();
+      const userSplit = membership === 'gold' ? 0.8 : (membership === 'silver' ? 0.5 : (membership === 'diamond' ? 1.0 : 0.2));
+      const baseRatePerSec = 1.25 / 3600;
+      const rate = baseRatePerSec * userSplit;
       
-      // If discrepancy > 0.01 g (minimal) and not recently synced, heal it
-      if (diff > 0.01) {
-        console.log(`[Self-Healing] Syncing points to balance: ${currentPoints} -> ${expectedPoints}`);
+      const expectedPointsFromTime = (userData.totalActiveTime || 0) * rate;
+      const currentPoints = userData.points || 0;
+      const diff = Math.abs(expectedPointsFromTime - currentPoints);
+      
+      // Fix: If user is Gold and balance is not consistent with time, or if generic discrepancy > 0.1
+      // User specifically requested: "Fix amount to be consistent with time"
+      if (membership === 'gold' && diff > 0.01) {
+        console.log(`[Consistency Fix] Syncing Gold balance to match time: ${currentPoints} -> ${expectedPointsFromTime}`);
         const userRef = doc(db, 'users', currentUser.uid);
         updateDoc(userRef, {
-          points: expectedPoints
+          points: expectedPointsFromTime,
+          balance: expectedPointsFromTime
+        }).catch(err => console.error("Consistency fix failed:", err));
+      } else if (diff > 0.1) {
+        console.log(`[Self-Healing] Syncing points to time-based expectation: ${currentPoints} -> ${expectedPointsFromTime}`);
+        const userRef = doc(db, 'users', currentUser.uid);
+        updateDoc(userRef, {
+          points: expectedPointsFromTime
         }).catch(err => console.error("Self-healing failed:", err));
       }
     }
-  }, [userData?.balance, currentUser?.uid]);
+  }, [userData?.totalActiveTime, userData?.membershipLevel, currentUser?.uid]);
 
   const syncTimeToFirestore = async () => {
     if (!currentUser || !db) return;
@@ -520,10 +536,17 @@ const addRevenue = async (userUsdAmount: number, platformUsdAmount: number, reas
       const userRef = doc(db, 'users', currentUser.uid);
       // 1 USDT per $1.00 USD
       const pointsToDeduct = usdAmount;
+      
+      // Reduce time proportionally to deduction
+      const membership = (userData?.membershipLevel || 'bronze').toLowerCase();
+      const userSplit = membership === 'gold' ? 0.8 : (membership === 'silver' ? 0.5 : (membership === 'diamond' ? 1.0 : 0.2));
+      const rate = (1.25 / 3600) * userSplit;
+      const secondsToDeduct = Math.floor(usdAmount / rate);
 
       await updateDoc(userRef, {
         balance: increment(-usdAmount),
-        points: increment(-pointsToDeduct)
+        points: increment(-pointsToDeduct),
+        totalActiveTime: increment(-secondsToDeduct)
       });
 
       // User-specific Points Ledger (Audit Trail for deductions)

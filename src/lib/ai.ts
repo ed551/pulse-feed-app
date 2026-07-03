@@ -219,7 +219,7 @@ export async function generateContentWithRetry(params: any): Promise<any> {
                         errorString.includes("503") || errorString.includes("UNAVAILABLE") ? 503 : 500);
 
         const combinedErrorText = (errorString + " " + JSON.stringify(error)).toLowerCase();
-        const isQuotaExceeded = status === 429 || combinedErrorText.includes("quota") || combinedErrorText.includes("resource_exhausted") || combinedErrorText.includes("rate limit");
+        const isQuotaExceeded = status === 429 || combinedErrorText.includes("quota") || combinedErrorText.includes("resource_exhausted") || combinedErrorText.includes("rate limit") || combinedErrorText.includes("limit exceeded");
 
         const isDepleted = !isQuotaExceeded && (combinedErrorText.includes("prepayment credits are depleted") || 
                           combinedErrorText.includes("billing restricted") ||
@@ -267,13 +267,15 @@ export async function generateContentWithRetry(params: any): Promise<any> {
             const currentModel = params.model;
             // Robust Fallback Sequence (AGENTS.md requested + Standard fallbacks)
             if (currentModel === 'gemini-3.5-flash') {
-              params.model = 'gemini-1.5-flash'; // Inject reliable fallback
+              params.model = 'gemini-1.5-flash'; 
             } else if (currentModel === 'gemini-1.5-flash') {
+              params.model = 'gemini-1.5-flash-8b';
+            } else if (currentModel === 'gemini-1.5-flash-8b') {
               params.model = 'gemini-3.1-flash-lite';
             } else if (currentModel === 'gemini-3.1-flash-lite') {
               params.model = 'gemini-flash-latest';
             } else if (currentModel === 'gemini-flash-latest') {
-              params.model = 'gemini-1.5-pro'; // Inject reliable fallback
+              params.model = 'gemini-1.5-pro'; 
             } else if (currentModel === 'gemini-1.5-pro') {
               params.model = 'gemini-3-flash-preview';
             } else if (currentModel === 'gemini-3-flash-preview') {

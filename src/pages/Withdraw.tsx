@@ -347,7 +347,14 @@ export default function Withdraw() {
                 <div className="mt-4 pt-4 border-t border-slate-900 grid grid-cols-2 gap-4">
                   <div className="space-y-1">
                     <p className="text-[9px] font-black uppercase tracking-widest text-slate-500">Session Earning</p>
-                    <p className="text-sm font-bold text-slate-300">USDT {((sessionActiveSeconds * 1.0) / 3600).toFixed(6)}</p>
+                    <p className="text-sm font-bold text-slate-300">
+                      USDT {(() => {
+                        const membership = (userData?.membershipLevel || 'bronze').toLowerCase();
+                        const userSplit = membership === 'gold' ? 0.8 : (membership === 'silver' ? 0.5 : (membership === 'diamond' ? 1.0 : 0.2));
+                        const rate = (1.25 / 3600) * userSplit;
+                        return (sessionActiveSeconds * rate).toFixed(6);
+                      })()}
+                    </p>
                   </div>
                   <div className="space-y-1 text-right">
                     <p className="text-[9px] font-black uppercase tracking-widest text-slate-500">Live Growth</p>

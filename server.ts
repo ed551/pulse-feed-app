@@ -963,6 +963,7 @@ async function generateContentWithRetry(params: any): Promise<any> {
                                 combinedErrorText.includes("quota") || 
                                 combinedErrorText.includes("resource_exhausted") ||
                                 combinedErrorText.includes("rate limit") ||
+                                combinedErrorText.includes("limit exceeded") ||
                                 errorJson?.error?.status === "RESOURCE_EXHAUSTED";
 
         const isDepleted = !isQuotaExceeded && (
@@ -1021,13 +1022,15 @@ async function generateContentWithRetry(params: any): Promise<any> {
           const currentModel = params.model;
           // Robust Fallback Sequence (AGENTS.md requested + Standard fallbacks)
           if (currentModel === 'gemini-3.5-flash') {
-            params.model = 'gemini-1.5-flash'; // Inject reliable fallback
+            params.model = 'gemini-1.5-flash'; 
           } else if (currentModel === 'gemini-1.5-flash') {
+            params.model = 'gemini-1.5-flash-8b';
+          } else if (currentModel === 'gemini-1.5-flash-8b') {
             params.model = 'gemini-3.1-flash-lite';
           } else if (currentModel === 'gemini-3.1-flash-lite') {
             params.model = 'gemini-flash-latest';
           } else if (currentModel === 'gemini-flash-latest') {
-            params.model = 'gemini-1.5-pro'; // Inject reliable fallback
+            params.model = 'gemini-1.5-pro'; 
           } else if (currentModel === 'gemini-1.5-pro') {
             params.model = 'gemini-3-flash-preview';
           } else if (currentModel === 'gemini-3-flash-preview') {
@@ -2130,15 +2133,16 @@ async function startServer() {
       
       // Determine Membership Level Split (Respecting User Prompt for Activity/Time Rewards)
       // User Prompt: "User revenue ... from time spent ... and activity ... if user is in Gold level Membership ... 20% for developer and 80% for user"
-      let userSplit = 0.1; // Default: 10% User (Diamond)
+      let userSplit = 0.2; // Default: 20% User (Bronze)
       if (userMembership === 'gold') userSplit = 0.8;
       else if (userMembership === 'silver') userSplit = 0.5;
       else if (userMembership === 'bronze') userSplit = 0.2;
-      else if (userMembership === 'diamond') userSplit = 0.1;
+      else if (userMembership === 'diamond') userSplit = 1.0;
 
       const platformSplit = 1 - userSplit;
 
-      const baseTotalAmount = 1 / 60; // 1 USDT per hour = 1/60 USDT per minute base total
+      // Base Total: 1.25 USDT per hour (so Gold 80% gets 1.0 USDT/hr)
+      const baseTotalAmount = 1.25 / 60; 
       const userAmount = baseTotalAmount * userSplit;
       const platformAmount = baseTotalAmount * platformSplit;
       const totalAmount = baseTotalAmount;
@@ -2353,8 +2357,16 @@ async function startServer() {
 
         // Deduct full requested amount from points
         // And re-calibrate totalActiveTime to maintain proportionality
-        // Rate: 0.016 USDT per 30s => 0.0005333 USDT per second
-        const rate = 0.016 / 30;
+        // Rate: Gold user gets 1.0 USDT per 3600s (1 hour)
+        // So 1 USDT = 3600 seconds.
+        const userMembership = userData?.membershipLevel || 'bronze';
+        let userSplit = 0.2;
+        if (userMembership === 'gold') userSplit = 0.8;
+        else if (userMembership === 'silver') userSplit = 0.5;
+        else if (userMembership === 'bronze') userSplit = 0.2;
+        else if (userMembership === 'diamond') userSplit = 1.0;
+
+        const rate = (1.25 / 3600) * userSplit;
         const secondsToDeduct = Math.floor(requestedAmount / rate);
         const newTotalActiveTime = Math.max(0, totalActiveTime - secondsToDeduct);
         
@@ -2830,6 +2842,8 @@ async function startServer() {
                         combinedText.includes("resource_exhausted") ||
                         combinedText.includes("429") ||
                         combinedText.includes("quota") ||
+                        combinedText.includes("rate limit") ||
+                        combinedText.includes("limit exceeded") ||
                         combinedText.includes("depleted") ||
                         combinedText.includes("insufficient balance") ||
                         combinedText.includes("api_key_invalid") ||
@@ -2843,8 +2857,10 @@ async function startServer() {
                         status === 402 ||
                         status === 403;
       
-      if (isDepleted || isAIBreakerTripped) {
-        console.warn("[Gemini Proxy] Falling back to simulation mode.");
+      const isQuotaOrLimit = status === 429 || combinedText.includes("quota") || combinedText.includes("rate limit") || combinedText.includes("limit exceeded");
+
+      if (isDepleted || isQuotaOrLimit || isAIBreakerTripped) {
+        console.warn(`[Gemini Proxy] AI Service limit/quota hit (${status}). Falling back to simulation mode.`);
         const { params } = req.body;
         return res.json(getSimulationResponse(params));
       }
