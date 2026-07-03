@@ -137,18 +137,18 @@ export const RevenueProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const SYNC_INTERVAL = 300000; // Sync rewards to DB every 5 mins
   const TIME_SYNC_INTERVAL = 60000; // Sync active time every 1 min
   
-  // Dynamic Rate: 0.005 USDT per minute base total.
+  // Dynamic Rate: 1.00 USDT per hour base total.
   // User gets 100% if Diamond, 80% if Gold, 50% if Silver, 20% if Bronze.
   const getActiveRatePerSecond = () => {
     const membership = (userData?.membershipLevel || 'bronze').toLowerCase();
-    let userSplit = 0.2;
-    if (membership === 'diamond') userSplit = 1.0;
-    else if (membership === 'gold') userSplit = 0.8;
+    let userSplit = 0.1;
+    if (membership === 'gold') userSplit = 0.8;
     else if (membership === 'silver') userSplit = 0.5;
     else if (membership === 'bronze') userSplit = 0.2;
+    else if (membership === 'diamond') userSplit = 0.1;
     
-    const baseRatePerMin = 0.005;
-    const baseRatePerSec = baseRatePerMin / 60;
+    const baseRatePerHour = 1.0;
+    const baseRatePerSec = baseRatePerHour / 3600;
     return baseRatePerSec * userSplit;
   };
 

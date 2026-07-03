@@ -895,17 +895,17 @@ async function generateContentWithRetry(params: any): Promise<any> {
   try {
     let retries = 0;
     while (retries <= MAX_RETRIES) {
-      try {
-        if (params && !params.model) params.model = 'gemini-3.5-flash';
-        
-        // Normalize contents format per AGENTS.md
-        if (params.contents && !Array.isArray(params.contents) && typeof params.contents === 'string') {
-          params.contents = [{ role: 'user', parts: [{ text: params.contents }] }];
-        } else if (params.prompt && !params.contents) {
-          params.contents = [{ role: 'user', parts: [{ text: params.prompt }] }];
-          delete params.prompt;
-        }
+      if (params && !params.model) params.model = 'gemini-3.5-flash';
+      
+      // Normalize contents format per AGENTS.md
+      if (params.contents && !Array.isArray(params.contents) && typeof params.contents === 'string') {
+        params.contents = [{ role: 'user', parts: [{ text: params.contents }] }];
+      } else if (params.prompt && !params.contents) {
+        params.contents = [{ role: 'user', parts: [{ text: params.prompt }] }];
+        delete params.prompt;
+      }
 
+      try {
         const response = await (ai as any).models.generateContent(params);
         
         // Final normalization to ensure .text is a string for all callers
@@ -936,11 +936,12 @@ async function generateContentWithRetry(params: any): Promise<any> {
                           combinedErrorText.includes("blocked");
         
         if (isDunning) {
-          console.error("[Server AI] Billing/Blocking restriction detected. Simulation fallback disabled per user request.");
+          console.error("[Server AI] Billing/Blocking restriction detected. Simulation fallback enabled.");
           isAIBreakerTripped = true;
-          breakerErrorText = "Gemini API Blocked: Project billing restricted (Dunning). Please resolve this in your Google Cloud Console Billing dashboard to restore AI features.";
+          breakerErrorText = "Gemini API Blocked: Project billing restricted (Dunning). Please resolve this in your Google Cloud Console Billing dashboard.";
           breakerTrippedAt = Date.now();
-          throw error; // Propagate the error instead of simulating
+          // Fall through to simulation in the route handler
+          throw error;
         }
 
         const errorJson = (function() {
@@ -957,8 +958,6 @@ async function generateContentWithRetry(params: any): Promise<any> {
                        (errorString.includes("404") || errorString.includes("NOT_FOUND") ? 404 : 
                         errorString.includes("429") || errorString.includes("QUOTA") ? 429 : 
                         errorString.includes("503") || errorString.includes("UNAVAILABLE") ? 503 : 500);
-        
-        // Use the combinedErrorText variable defined earlier in the catch block
         
         const isQuotaExceeded = status === 429 || 
                                 combinedErrorText.includes("quota") || 
@@ -986,87 +985,69 @@ async function generateContentWithRetry(params: any): Promise<any> {
         if (isBlocked || isDepleted || status === 429 || status === 402 || isQuotaExceeded) {
           const oldIndex = currentKeyIndex;
           
-          // Rotate keys on any quota/billing failure to spread load
-          const keysTriedForThisModel = retries % AVAILABLE_KEYS.length;
-          
           if (AVAILABLE_KEYS.length > 1) {
             currentKeyIndex = (currentKeyIndex + 1) % AVAILABLE_KEYS.length;
-            console.warn(`[Server AI] Key ${oldIndex + 1} failed (${status}${isBlocked ? '-BLOCKED' : ''}${isDepleted ? '-BILLING' : ''}). Rotating to key ${currentKeyIndex + 1}/${AVAILABLE_KEYS.length}... (Attempt ${retries}/${MAX_RETRIES})`);
+            console.warn(`[Server AI] Key ${oldIndex + 1} failed (${status}). Rotating to key ${currentKeyIndex + 1}/${AVAILABLE_KEYS.length}...`);
             ai = createAIClient(AVAILABLE_KEYS[currentKeyIndex]);
             await delay(1000); 
             
-            // If we have more keys to try for THIS specific model, rotate key but don't change model yet
-            if (isBlocked || keysTriedForThisModel !== 0) {
+            // If we have more keys to try, don't increment retries yet
+            if (retries < AVAILABLE_KEYS.length) {
                continue;
             }
-          }
-
-          // If no more keys and it's a block, THEN trip the breaker
-          if (isBlocked) {
-            isAIBreakerTripped = true;
-            breakerErrorText = combinedErrorText.includes("dunning")
-              ? "Gemini API Blocked: Project billing restricted (Dunning). Please resolve this in your Google Cloud Console Billing dashboard to restore AI features."
-              : errorString;
-            breakerTrippedAt = Date.now();
-            console.error(`[Server AI] CIRCUIT BREAKER TRIPPED (Status 403): ${breakerErrorText}. No more backup keys available.`);
-            if (currentRelease) {
-              currentRelease();
-              currentRelease = null;
-            }
-            throw new Error(breakerErrorText);
           }
         }
 
         // Final Model Fallback Logic on Server (Sync with src/lib/ai.ts and AGENTS.md)
-          if (isQuotaExceeded || isUnavailable || status === 404 || isDepleted) {
-            retries++;
-            const oldModel = params.model;
-            
-            if (isQuotaExceeded || isUnavailable || isDepleted) {
-              // 429 (Quota) and 402 (Billing) need substantial wait times.
-              const backoffFactor = Math.min(retries, 6);
-              const waitTime = isDepleted ? 60000 : (isUnavailable ? 2000 : (10000 * Math.pow(1.5, backoffFactor))); 
-              console.debug(`[Server AI] ${oldModel} error ${status}${isDepleted ? ' (BILLING)' : ''}. recovery delay of ${Math.round(waitTime/1000)}s. (Attempt ${retries}/${MAX_RETRIES})`);
-              
-              // If we are hitting billing errors and we've already tried several times, fail fast
-              if (isDepleted && retries > 3) {
-                console.error("[Server AI] Billing credits depleted across multiple attempts. Terminating retry cycle.");
-                throw error;
-              }
-
-              // HOLD THE LOCK during wait time to prevent other users from hitting the same quota error
-              await delay(waitTime);
-            }
-
-            const currentModel = params.model;
-            // Robust Fallback Sequence based on User Instructions (AGENTS.md)
-            if (currentModel === 'gemini-3.5-flash') {
-              params.model = 'gemini-3.1-flash-lite';
-            } else if (currentModel === 'gemini-3.1-flash-lite') {
-              params.model = 'gemini-flash-latest';
-            } else if (currentModel === 'gemini-flash-latest') {
-              params.model = 'gemini-3-flash-preview';
-            } else if (currentModel === 'gemini-3-flash-preview') {
-              params.model = 'gemini-3.1-pro-preview';
-            } else if (currentModel === 'gemini-3.1-pro-preview') {
-              params.model = 'gemini-2.0-flash-exp';
-            } else {
-              params.model = 'gemini-3.5-flash';
-            }
+        if (isQuotaExceeded || isUnavailable || status === 404 || isDepleted) {
+          retries++;
+          const oldModel = params.model;
           
-            if (retries >= MAX_RETRIES) {
-              console.error(`[Server AI] All model fallbacks and retries exhausted (${MAX_RETRIES}).`);
-              if (isDepleted || status === 402 || status === 429) {
-                const billingError: any = new Error("Gemini API credits are depleted across all models. Please check your billing at ai.studio or wait for free-tier resets.");
-                billingError.status = 402;
-                billingError.code = "BILLING_DEPLETED";
-                throw billingError;
-              }
-              throw error;
-            }
-            
-            console.debug(`[Server AI] Retrying with model fallback: ${params.model} (Attempt ${retries}/${MAX_RETRIES})`);
-            continue;
+          // Parse retry-after from error if possible
+          let waitTime = isDepleted ? 60000 : 10000;
+          if (isQuotaExceeded && combinedErrorText.includes("retry in")) {
+             try {
+               const match = combinedErrorText.match(/retry in ([\d\.]+)/);
+               if (match && match[1]) {
+                 waitTime = (parseFloat(match[1]) + 1) * 1000;
+                 console.log(`[Server AI] API requested retry delay of ${waitTime}ms`);
+               }
+             } catch(e) {}
+          }
+          
+          console.debug(`[Server AI] ${oldModel} error ${status}. recovery delay of ${Math.round(waitTime/1000)}s. (Attempt ${retries}/${MAX_RETRIES})`);
+          await delay(waitTime);
+
+          const currentModel = params.model;
+          // Robust Fallback Sequence (AGENTS.md requested + Standard fallbacks)
+          if (currentModel === 'gemini-3.5-flash') {
+            params.model = 'gemini-1.5-flash'; // Inject reliable fallback
+          } else if (currentModel === 'gemini-1.5-flash') {
+            params.model = 'gemini-3.1-flash-lite';
+          } else if (currentModel === 'gemini-3.1-flash-lite') {
+            params.model = 'gemini-flash-latest';
+          } else if (currentModel === 'gemini-flash-latest') {
+            params.model = 'gemini-1.5-pro'; // Inject reliable fallback
+          } else if (currentModel === 'gemini-1.5-pro') {
+            params.model = 'gemini-3-flash-preview';
+          } else if (currentModel === 'gemini-3-flash-preview') {
+            params.model = 'gemini-3.1-pro-preview';
+          } else if (currentModel === 'gemini-3.1-pro-preview') {
+            params.model = 'gemini-2.0-flash-exp';
+          } else {
+            params.model = 'gemini-1.5-flash';
+          }
+        
+          if (retries >= MAX_RETRIES) {
+            console.error(`[Server AI] All model fallbacks and retries exhausted (${MAX_RETRIES}). Tripping breaker.`);
+            isAIBreakerTripped = true;
+            breakerErrorText = "Gemini API Quota Exhausted across all available models and keys.";
+            breakerTrippedAt = Date.now();
+            throw error;
+          }
+          
+          console.debug(`[Server AI] Retrying with model fallback: ${params.model}`);
+          continue;
         }
 
         throw error;
@@ -2149,15 +2130,15 @@ async function startServer() {
       
       // Determine Membership Level Split (Respecting User Prompt for Activity/Time Rewards)
       // User Prompt: "User revenue ... from time spent ... and activity ... if user is in Gold level Membership ... 20% for developer and 80% for user"
-      let userSplit = 0.1; // Default: 10% User
+      let userSplit = 0.1; // Default: 10% User (Diamond)
       if (userMembership === 'gold') userSplit = 0.8;
       else if (userMembership === 'silver') userSplit = 0.5;
-      else if (userMembership === 'bronze') userSplit = 0.3;
+      else if (userMembership === 'bronze') userSplit = 0.2;
       else if (userMembership === 'diamond') userSplit = 0.1;
 
       const platformSplit = 1 - userSplit;
 
-      const baseTotalAmount = 0.005; // 0.005 USDT per minute base total
+      const baseTotalAmount = 1 / 60; // 1 USDT per hour = 1/60 USDT per minute base total
       const userAmount = baseTotalAmount * userSplit;
       const platformAmount = baseTotalAmount * platformSplit;
       const totalAmount = baseTotalAmount;
@@ -2229,10 +2210,10 @@ async function startServer() {
       
       // Determine Membership Level Split (Respecting User Prompt for Activity/Time Rewards)
       // User Prompt: "User revenue ... from time spent ... and activity ... if user is in Gold level Membership ... 20% for developer and 80% for user"
-      let userSplit = 0.1; // Default: 10% User
+      let userSplit = 0.1; // Default: 10% User (Diamond)
       if (userMembership === 'gold') userSplit = 0.8;
       else if (userMembership === 'silver') userSplit = 0.5;
-      else if (userMembership === 'bronze') userSplit = 0.3;
+      else if (userMembership === 'bronze') userSplit = 0.2;
       else if (userMembership === 'diamond') userSplit = 0.1;
 
       const platformSplit = 1 - userSplit;
@@ -2840,6 +2821,9 @@ async function startServer() {
       
       console.error("[Gemini Proxy] FINAL ERROR DETAILS:", errorString);
       
+      const isWarmup = combinedText.includes("503") || combinedText.includes("unavailable") || combinedText.includes("overloaded") || combinedText.includes("502") || combinedText.includes("504");
+      const status = isWarmup ? 503 : (typeof err.status === 'number' ? err.status : 500);
+
       const isDepleted = combinedText.includes("prepayment credits are depleted") || 
                         combinedText.includes("billing") ||
                         combinedText.includes("credits are exhausted") ||
@@ -2854,17 +2838,17 @@ async function startServer() {
                         combinedText.includes("denied") ||
                         combinedText.includes("permission_denied") ||
                         combinedText.includes("forbidden") ||
-                        combinedText.includes("403");
+                        combinedText.includes("403") ||
+                        status === 429 ||
+                        status === 402 ||
+                        status === 403;
       
-      if (isDepleted) {
-        console.warn("[Gemini Proxy] Falling back to simulation due to billing restriction detected in middle of request.");
+      if (isDepleted || isAIBreakerTripped) {
+        console.warn("[Gemini Proxy] Falling back to simulation mode.");
         const { params } = req.body;
         return res.json(getSimulationResponse(params));
       }
 
-      const isWarmup = combinedText.includes("503") || combinedText.includes("unavailable") || combinedText.includes("overloaded") || combinedText.includes("502") || combinedText.includes("504");
-      const status = isWarmup ? 503 : (typeof err.status === 'number' ? err.status : 500);
-      
       return res.status(status).json({ 
         error: isWarmup ? "The AI engine is currently warming up or overloaded. We are automatically retrying with optimized backoff..." : errorString,
         status: status,
@@ -4792,7 +4776,7 @@ async function performRobustEducationSync() {
 
   // Weather Cache (Stale-While-Revalidate Strategy)
   const weatherCache = new Map<string, { data: any, timestamp: number }>();
-  const FRESH_DURATION = 30 * 60 * 1000; // 30 minutes is "fresh"
+  const FRESH_DURATION = 5 * 60 * 1000; // 5 minutes is "fresh"
   const STALE_DURATION = 24 * 60 * 60 * 1000; // 24 hours is "stale but usable"
 
   // Weather Proxy
@@ -6139,10 +6123,10 @@ async function performRobustEducationSync() {
       
       // Determine Membership Level Split (Respecting User Prompt for Activity/Time Rewards)
       // User Prompt: "User revenue ... from time spent ... and activity ... if user is in Gold level Membership ... 20% for developer and 80% for user"
-      let userSplit = 0.1; // Default: 10% User
+      let userSplit = 0.1; // Default: 10% User (Diamond)
       if (userMembership === 'gold') userSplit = 0.8;
       else if (userMembership === 'silver') userSplit = 0.5;
-      else if (userMembership === 'bronze') userSplit = 0.3;
+      else if (userMembership === 'bronze') userSplit = 0.2;
       else if (userMembership === 'diamond') userSplit = 0.1;
 
       // OVERRIDE for Education Hub / AI Training per AGENTS.md

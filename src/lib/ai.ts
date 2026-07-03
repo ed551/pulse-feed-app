@@ -265,19 +265,23 @@ export async function generateContentWithRetry(params: any): Promise<any> {
             }
 
             const currentModel = params.model;
-            // Robust Fallback Sequence based on User Instructions (AGENTS.md)
+            // Robust Fallback Sequence (AGENTS.md requested + Standard fallbacks)
             if (currentModel === 'gemini-3.5-flash') {
+              params.model = 'gemini-1.5-flash'; // Inject reliable fallback
+            } else if (currentModel === 'gemini-1.5-flash') {
               params.model = 'gemini-3.1-flash-lite';
             } else if (currentModel === 'gemini-3.1-flash-lite') {
               params.model = 'gemini-flash-latest';
             } else if (currentModel === 'gemini-flash-latest') {
+              params.model = 'gemini-1.5-pro'; // Inject reliable fallback
+            } else if (currentModel === 'gemini-1.5-pro') {
               params.model = 'gemini-3-flash-preview';
             } else if (currentModel === 'gemini-3-flash-preview') {
               params.model = 'gemini-3.1-pro-preview';
             } else if (currentModel === 'gemini-3.1-pro-preview') {
               params.model = 'gemini-2.0-flash-exp';
             } else {
-              params.model = 'gemini-3.5-flash';
+              params.model = 'gemini-1.5-flash';
             }
             
             if (retries >= MAX_RETRIES) {

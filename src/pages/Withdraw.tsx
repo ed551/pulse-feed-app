@@ -347,7 +347,7 @@ export default function Withdraw() {
                 <div className="mt-4 pt-4 border-t border-slate-900 grid grid-cols-2 gap-4">
                   <div className="space-y-1">
                     <p className="text-[9px] font-black uppercase tracking-widest text-slate-500">Session Earning</p>
-                    <p className="text-sm font-bold text-slate-300">USDT {((sessionActiveSeconds * 0.005) / 60).toFixed(6)}</p>
+                    <p className="text-sm font-bold text-slate-300">USDT {((sessionActiveSeconds * 1.0) / 3600).toFixed(6)}</p>
                   </div>
                   <div className="space-y-1 text-right">
                     <p className="text-[9px] font-black uppercase tracking-widest text-slate-500">Live Growth</p>
@@ -568,6 +568,7 @@ export default function Withdraw() {
       </div>
 
       <div className="text-center mt-8 text-[10px] text-slate-600 font-mono flex flex-col items-center gap-1">
+        <span className="text-slate-400 font-bold uppercase tracking-widest mb-1">Notice: All withdrawals are processed monthly</span>
         <span>Google Security Authentication (Active)</span>
         <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> Platform Nodes Synchronized</span>
       </div>

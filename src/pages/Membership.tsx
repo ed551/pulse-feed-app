@@ -16,25 +16,26 @@ import { db } from '../lib/firebase';
 
 const TIERS = [
   {
-    id: 'bronze',
-    name: 'Bronze',
-    subtitle: 'Community Core',
-    price: 0,
-    icon: Shield,
-    color: 'text-orange-500',
-    bg: 'bg-orange-50 dark:bg-orange-900/10',
-    borderColor: 'border-orange-100 dark:border-orange-900/20',
-    btnBg: 'bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white',
+    id: 'gold',
+    name: 'Gold',
+    subtitle: 'Elite Pioneer',
+    price: 30, // $30
+    icon: Crown,
+    color: 'text-indigo-500',
+    bg: 'bg-indigo-50 dark:bg-indigo-900/10',
+    borderColor: 'border-indigo-100 dark:border-indigo-900/20',
+    btnBg: 'bg-gradient-to-r from-indigo-500 to-purple-600 text-white shadow-indigo-500/20',
     features: [
-      '20% Revenue Share',
-      'Standard Market Analytics',
-      'Daily Task Rewards',
-      'Basic AI Support',
-      'Community Discussions',
-      'Base Education Access'
+      '80% Revenue Share',
+      'Quantum Market Prediction',
+      'Zero Market Trading Fees',
+      'Unlimited AI Tutoring',
+      'Market Verified Crown',
+      'Direct Dev Channels',
+      'Monthly Bonus Drops'
     ],
-    highlight: false,
-    benefit: 'Perfect for getting started and earning from the community.'
+    highlight: true,
+    benefit: 'Maximize your potential and revenue with total access.'
   },
   {
     id: 'silver',
@@ -59,48 +60,47 @@ const TIERS = [
     benefit: 'The best balance for active earners and power users.'
   },
   {
-    id: 'gold',
-    name: 'Gold',
-    subtitle: 'Elite Pioneer',
-    price: 30, // $30
-    icon: Crown,
-    color: 'text-indigo-500',
-    bg: 'bg-indigo-50 dark:bg-indigo-900/10',
-    borderColor: 'border-indigo-100 dark:border-indigo-900/20',
-    btnBg: 'bg-gradient-to-r from-indigo-500 to-purple-600 text-white shadow-indigo-500/20',
+    id: 'bronze',
+    name: 'Bronze',
+    subtitle: 'Community Core',
+    price: 5, // $5 (Added price to distinguish from Diamond)
+    icon: Shield,
+    color: 'text-orange-500',
+    bg: 'bg-orange-50 dark:bg-orange-900/10',
+    borderColor: 'border-orange-100 dark:border-orange-900/20',
+    btnBg: 'bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white',
     features: [
-      '80% Revenue Share',
-      'Quantum Market Prediction',
-      'Zero Market Trading Fees',
-      'Unlimited AI Tutoring',
-      'Market Verified Crown',
-      'Direct Dev Channels',
-      'Monthly Bonus Drops'
+      '20% Revenue Share',
+      'Standard Market Analytics',
+      'Daily Task Rewards',
+      'Basic AI Support',
+      'Community Discussions',
+      'Base Education Access'
     ],
-    highlight: true,
-    benefit: 'Maximize your potential and revenue with total access.'
+    highlight: false,
+    benefit: 'Perfect for getting started and earning from the community.'
   },
   {
     id: 'diamond',
     name: 'Diamond',
-    subtitle: 'Pulse Elite',
-    price: 100, // $100
+    subtitle: 'Entry Restricted',
+    price: 0, // Free / Restricted
     icon: Gem,
-    color: 'text-rose-500',
-    bg: 'bg-rose-50 dark:bg-rose-900/10',
-    borderColor: 'border-rose-100 dark:border-rose-900/20',
-    btnBg: 'bg-gradient-to-r from-rose-500 via-purple-600 to-indigo-700 text-white shadow-rose-500/20',
+    color: 'text-slate-400',
+    bg: 'bg-slate-50 dark:bg-slate-900/10',
+    borderColor: 'border-slate-100 dark:border-slate-900/20',
+    btnBg: 'bg-slate-200 dark:bg-slate-700 text-slate-900 dark:text-white',
     features: [
-      '100% Revenue Share (Max)',
-      'Omni-Neural AI Access',
-      'Global Profit Sharing',
-      'Personal Account Manager',
-      'Diamond Verified Crest',
-      'Beta Feature Access',
-      'Exclusive Annual Events'
+      '10% Revenue Share (Entry)',
+      'Basic AI Sandboxing',
+      'Standard Event Access',
+      'Community Read-Only',
+      'No Profit Sharing',
+      'Verified Entry Crest',
+      'Monthly Earning Cap'
     ],
     highlight: false,
-    benefit: 'The ultimate tier for those who demand absolute performance.'
+    benefit: 'The entry-level Pulse experience for restricted growth.'
   }
 ];
 
@@ -348,7 +348,7 @@ export default function Membership() {
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-xs font-bold text-gray-600 dark:text-gray-400">Diamond</span>
-                <span className="text-sm font-black dark:text-white">100%</span>
+                <span className="text-sm font-black dark:text-white">10%</span>
               </div>
             </div>
           </div>
@@ -370,7 +370,7 @@ export default function Membership() {
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-xs font-bold text-gray-600 dark:text-gray-400">Diamond</span>
-                <span className="text-[10px] font-black bg-rose-100 dark:bg-rose-900/30 text-rose-600 px-2 py-0.5 rounded uppercase tracking-tighter">Neural</span>
+                <span className="text-[10px] font-black bg-slate-100 dark:bg-slate-900/30 text-slate-600 px-2 py-0.5 rounded uppercase tracking-tighter">Sandbox</span>
               </div>
             </div>
           </div>
@@ -392,7 +392,7 @@ export default function Membership() {
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-xs font-bold text-gray-600 dark:text-gray-400">Diamond</span>
-                <span className="text-[10px] font-black dark:text-white">Neural Key</span>
+                <span className="text-[10px] font-black dark:text-white">Entry Crest</span>
               </div>
             </div>
           </div>

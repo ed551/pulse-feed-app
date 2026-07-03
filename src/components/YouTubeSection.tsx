@@ -16,7 +16,7 @@ interface MediaItem {
 
 const MEDIA_ITEMS: MediaItem[] = [
   // Curated spotlights
-  { id: 'spot-1', title: 'Community Feed', category: 'Spotlight', type: 'playlist', url: 'https://www.youtube.com/embed/videoseries?list=PL4cUxeGkcC9jx2-BHq9u6rax7X6KdfTuR', description: 'Curated community playlist updates and event recordings.' },
+  { id: 'spot-1', title: 'Community Feed', category: 'Spotlight', type: 'playlist', url: 'https://www.youtube.com/embed/videoseries?list=PLJKQ-nLJ-21LgxH8A-7YMFZuZhUnLuGHY', description: 'Curated community playlist updates and event recordings.' },
   { id: 'spot-2', title: 'World News Hub', category: 'Spotlight', type: 'video', url: 'https://www.youtube.com/embed/5qap5aO4i9A', description: 'Global highlights and community spotlight.' },
   { id: 'spot-3', title: 'Global Tech Insights', category: 'Spotlight', type: 'video', url: 'https://www.youtube.com/embed/qgehB8b_K1U', description: 'Latest breakthroughs in technology, AI and science.' },
   { id: 'spot-4', title: 'Master Classes', category: 'Spotlight', type: 'playlist', url: 'https://www.youtube.com/embed/videoseries?list=PLJKQ-nLJ-21LgxH8A-7YMFZuZhUnLuGHY', description: 'Educational deep-dives and development bootcamps.' },
@@ -34,6 +34,15 @@ const MEDIA_ITEMS: MediaItem[] = [
   },
   {
     id: 'tv-2',
+    title: 'Al Jazeera English',
+    category: 'Live TV',
+    type: 'live',
+    url: 'https://www.youtube.com/embed/live_stream?channel=UCNye-wNBqNL5ZzHSJj3l8Bg',
+    description: 'Al Jazeera - Global news and analysis.',
+    thumbnail: 'https://images.unsplash.com/photo-1594909122845-11baa439b7bf?w=400&auto=format&fit=crop&q=60'
+  },
+  {
+    id: 'tv-3',
     title: 'ABC News Live',
     category: 'Live TV',
     type: 'live',
@@ -42,31 +51,22 @@ const MEDIA_ITEMS: MediaItem[] = [
     thumbnail: 'https://images.unsplash.com/photo-1574958269340-fa927503f3dd?w=400&auto=format&fit=crop&q=60'
   },
   {
-    id: 'tv-3',
-    title: 'DW News Live',
-    category: 'Live TV',
-    type: 'live',
-    url: 'https://www.youtube.com/embed/live_stream?channel=UCuZ4Dn06zhLBa7asCX_v-YQ',
-    description: 'DW News - International news and analysis from Germany.',
-    thumbnail: 'https://images.unsplash.com/photo-1523991114538-8012da2964e5?w=400&auto=format&fit=crop&q=60'
-  },
-  {
     id: 'tv-4',
-    title: 'Al Jazeera Live',
-    category: 'Live TV',
-    type: 'live',
-    url: 'https://www.youtube.com/embed/live_stream?channel=UCNye-wNBqNL5ZzHSJj3l8Bg',
-    description: 'Al Jazeera - Global news and analysis.',
-    thumbnail: 'https://images.unsplash.com/photo-1594909122845-11baa439b7bf?w=400&auto=format&fit=crop&q=60'
-  },
-  {
-    id: 'tv-5',
-    title: 'France 24 Live',
+    title: 'France 24 English',
     category: 'Live TV',
     type: 'live',
     url: 'https://www.youtube.com/embed/live_stream?channel=UCQfwfsi5VrQ8yKZ-UWmAEFg',
     description: 'France 24 - International news in English.',
     thumbnail: 'https://images.unsplash.com/photo-1461896836934-ffe607ba8211?w=400&auto=format&fit=crop&q=60'
+  },
+  {
+    id: 'tv-5',
+    title: 'DW News Live',
+    category: 'Live TV',
+    type: 'live',
+    url: 'https://www.youtube.com/embed/live_stream?channel=UCuZ4Dn06zhLBa7asCX_v-YQ',
+    description: 'DW News - International news and analysis.',
+    thumbnail: 'https://images.unsplash.com/photo-1523991114538-8012da2964e5?w=400&auto=format&fit=crop&q=60'
   }
 ];
 
@@ -179,6 +179,58 @@ export default function YouTubeSection() {
   // Audio Synth Ref for real-world audio synthesis
   const audioCtxRef = useRef<AudioContext | null>(null);
   const synthNodesRef = useRef<{ osc1: OscillatorNode; osc2: OscillatorNode; gainNode: GainNode; filterNode: BiquadFilterNode } | null>(null);
+
+  // Audio elements ref for live streaming
+  const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
+
+  // Sync volume to audio element
+  useEffect(() => {
+    if (audioPlayerRef.current) {
+      audioPlayerRef.current.volume = isMuted ? 0 : volume;
+    }
+  }, [volume, isMuted]);
+
+  // Handle Radio Play/Pause
+  const toggleRadio = () => {
+    if (isRadioPlaying) {
+      // Stop
+      setIsRadioPlaying(false);
+      if (audioPlayerRef.current) {
+        audioPlayerRef.current.pause();
+      }
+      stopSynthMusic();
+    } else {
+      // Start
+      setIsRadioPlaying(true);
+      if (audioPlayerRef.current) {
+        audioPlayerRef.current.play().catch(e => console.warn("Audio play blocked:", e));
+      }
+      startSynthMusic();
+    }
+  };
+
+  // Change Radio Station
+  const changeRadioStation = (station: RadioChannel) => {
+    const wasPlaying = isRadioPlaying;
+    if (wasPlaying) {
+      setIsRadioPlaying(false);
+      if (audioPlayerRef.current) audioPlayerRef.current.pause();
+      stopSynthMusic();
+    }
+    
+    setSelectedRadio(station);
+    
+    if (wasPlaying) {
+      setTimeout(() => {
+        setIsRadioPlaying(true);
+        if (audioPlayerRef.current) {
+          audioPlayerRef.current.src = station.streamUrl;
+          audioPlayerRef.current.play().catch(e => console.warn("Audio play blocked:", e));
+        }
+        startSynthMusic();
+      }, 100);
+    }
+  };
 
   const handleReshuffle = () => {
     setIsReshuffling(true);
@@ -544,9 +596,17 @@ export default function YouTubeSection() {
             <div className="lg:col-span-2 bg-gradient-to-br from-amber-500/5 to-amber-600/5 dark:from-amber-950/10 dark:to-transparent p-6 rounded-3xl border border-amber-500/10 flex flex-col justify-between relative overflow-hidden min-h-[260px]">
               <div className="absolute top-0 right-0 p-3">
                 <span className="px-2 py-1 bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center gap-1.5 animate-pulse">
-                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500" /> LIVE SYNTH STREAM
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500" /> LIVE BROADCAST
                 </span>
               </div>
+
+              {/* Hidden Audio Element for Live Streams */}
+              <audio 
+                ref={audioPlayerRef} 
+                src={selectedRadio.streamUrl} 
+                className="hidden" 
+                crossOrigin="anonymous"
+              />
 
               <div>
                 <div className="flex items-center gap-3">
@@ -596,7 +656,7 @@ export default function YouTubeSection() {
               <div className="flex flex-wrap items-center justify-between gap-4 pt-4 border-t border-gray-100 dark:border-gray-800">
                 <div className="flex items-center gap-3">
                   <button
-                    onClick={() => setIsRadioPlaying(!isRadioPlaying)}
+                    onClick={toggleRadio}
                     className={cn(
                       "p-4 rounded-2xl text-white font-black uppercase transition-all flex items-center justify-center gap-2 shadow-md cursor-pointer",
                       isRadioPlaying ? "bg-red-500 hover:bg-red-600" : "bg-amber-500 hover:bg-amber-600"
@@ -643,13 +703,7 @@ export default function YouTubeSection() {
                 {RADIO_CHANNELS.map((station) => (
                   <button
                     key={station.id}
-                    onClick={() => {
-                      setSelectedRadio(station);
-                      if (isRadioPlaying) {
-                        setIsRadioPlaying(false);
-                        setTimeout(() => setIsRadioPlaying(true), 50);
-                      }
-                    }}
+                    onClick={() => changeRadioStation(station)}
                     className={cn(
                       "w-full text-left p-3.5 rounded-2xl border transition-all flex items-center justify-between cursor-pointer",
                       selectedRadio.id === station.id

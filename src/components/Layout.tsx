@@ -535,7 +535,7 @@ export default function Layout() {
     if (cachedData) {
       try {
         const { data, timestamp } = JSON.parse(cachedData);
-        if (data && data.current && data.forecast && Date.now() - timestamp < 30 * 60 * 1000) { // 30 mins
+        if (data && data.current && data.forecast && Date.now() - timestamp < 5 * 60 * 1000) { // 5 mins
           console.debug("Weather: Using localStorage cache");
           
           // Re-attach icons because functions (components) are lost in JSON.stringify
@@ -557,6 +557,13 @@ export default function Layout() {
     let attempts = 3;
     let lastError = null;
 
+    const fetchDirectWeather = async (lat: number, lon: number) => {
+      console.log("Weather: Attempting client-side fallback fetch...");
+      const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true&daily=temperature_2m_max,weather_code&timezone=auto`);
+      if (!res.ok) throw new Error("Client-side weather fetch failed");
+      return await res.json();
+    };
+
     while (attempts > 0) {
       try {
         const url = `/api/weather?lat=${lat}&lon=${lon}`;
@@ -565,27 +572,26 @@ export default function Layout() {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s client timeout
         
-        const response = await apiFetch(url, { signal: controller.signal });
-        clearTimeout(timeoutId);
+        let data;
+        try {
+          const response = await apiFetch(url, { signal: controller.signal });
+          clearTimeout(timeoutId);
 
-        const contentType = response.headers.get("content-type");
-        
-        if (!response.ok) {
-          let errorMsg = `Weather API responded with status: ${response.status}`;
-          try {
-            if (contentType && contentType.includes("application/json")) {
-              const errorData = await response.json();
-              if (errorData.details) errorMsg += ` (${errorData.details})`;
-            }
-          } catch (e) { }
-          throw new Error(errorMsg);
+          const contentType = response.headers.get("content-type");
+          
+          if (!response.ok) {
+            throw new Error(`Server responded with ${response.status}`);
+          }
+
+          if (!contentType || !contentType.includes("application/json")) {
+            throw new Error("Invalid response format");
+          }
+          data = await response.json();
+        } catch (fetchErr) {
+          console.warn("Weather: Server fetch failed, falling back to direct client fetch", fetchErr);
+          data = await fetchDirectWeather(lat, lon);
         }
 
-        if (!contentType || !contentType.includes("application/json")) {
-          throw new Error("Weather API returned an invalid response format (non-JSON)");
-        }
-
-        const data = await response.json();
         const current = data.current_weather;
         const daily = data.daily;
         
@@ -823,7 +829,7 @@ export default function Layout() {
     };
     window.addEventListener('refresh-weather', handleRefresh);
 
-    const interval = setInterval(getLocation, 1800000); // Update every 30 mins
+    const interval = setInterval(getLocation, 300000); // Update every 5 mins
     return () => {
       clearTimeout(timer);
       window.removeEventListener('refresh-weather', handleRefresh);
