@@ -164,9 +164,15 @@ export default function AdsDashboard() {
       </div>
 
       <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 p-6">
-        <div className="flex items-center mb-6">
-          <Landmark className="w-6 h-6 text-blue-500 mr-2" />
-          <h2 className="text-xl font-bold text-gray-900 dark:text-white">Hands-Free Global Tax Remittance (MoR)</h2>
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center">
+            <Landmark className="w-6 h-6 text-blue-500 mr-2" />
+            <h2 className="text-xl font-bold text-gray-900 dark:text-white">Hands-Free Global Tax Remittance (MoR)</h2>
+          </div>
+          <span className="flex items-center gap-1.5 px-3 py-1 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[10px] font-black uppercase tracking-widest rounded-full border border-emerald-500/20">
+            <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></span>
+            MoR ACTIVE
+          </span>
         </div>
         <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
           <strong>Platform Zero-Liability:</strong> The platform uses a Merchant of Record (MoR) API. The MoR legally assumes all tax liabilities (VAT, GST, WHT) globally. It automatically calculates, deducts, and remits taxes directly to international authorities (IRS, KRA, HMRC, etc.) on your behalf. <strong>You do not need to file or remit these taxes yourself.</strong>

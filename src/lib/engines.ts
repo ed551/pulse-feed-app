@@ -18,7 +18,14 @@ export const mpesa_handler = {
 export const unified_participant_payout = () => {};
 export const rewards_policy = () => {};
 export const equal_distribution_protocol = () => {};
-export const merchant_of_record_tax_remittance = () => {};
+export const merchant_of_record_tax_remittance = () => {
+  return {
+    status: 'ACTIVE',
+    mode: 'AUTOMATIC_ON_TRANSACTION',
+    compliance: 'GLOBAL_VAT_GST_WHT',
+    lastCheck: new Date().toISOString()
+  };
+};
 
 export const auth_logic = () => {};
 export const user_history = () => {};

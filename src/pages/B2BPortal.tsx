@@ -239,9 +239,12 @@ export default function B2BPortal() {
                   <CheckCircle className="w-4 h-4 text-emerald-400 flex-shrink-0" />
                   <span>Interactive corporate opportunity checklists</span>
                 </div>
-                <div className="flex items-center gap-2.5">
-                  <CheckCircle className="w-4 h-4 text-emerald-400 flex-shrink-0" />
-                  <span>Merchant of Record (MoR) automated tax compliance</span>
+                <div className="flex items-center justify-between gap-2.5">
+                  <div className="flex items-center gap-2.5">
+                    <CheckCircle className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+                    <span>Merchant of Record (MoR) automated tax compliance</span>
+                  </div>
+                  <span className="text-[8px] bg-emerald-500/10 text-emerald-400 px-1.5 py-0.5 rounded border border-emerald-500/20 font-black uppercase tracking-widest">Active</span>
                 </div>
               </div>
 

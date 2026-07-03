@@ -134,6 +134,14 @@ export default function Layout() {
   const [dbStatus, setDbStatus] = useState(getConnectionStatus());
 
   useEffect(() => {
+    if (isDark) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  }, [isDark]);
+
+  useEffect(() => {
     const checkBreaker = setInterval(() => {
       setCircuitBreaker(getAIBreakerStatus());
       setDbStatus(getConnectionStatus());
@@ -1009,10 +1017,12 @@ export default function Layout() {
   return (
     <div className={cn(
       "bg-gray-200 dark:bg-black h-[100dvh] overflow-hidden flex items-center justify-center transition-colors duration-300",
-      viewMode === 'desktop' ? "p-2 sm:p-4" : "p-0"
+      viewMode === 'desktop' ? "p-2 sm:p-4" : "p-0",
+      isDark ? "dark" : ""
     )}>
       <div className={cn(
         "flex flex-col bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 overflow-hidden font-sans transition-all duration-500 relative h-full w-full",
+        isDark ? "dark" : "",
         viewMode === 'mobile' && window.innerWidth >= 1024 && !(/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent))
           ? "max-w-[400px] max-h-[850px] rounded-[3.5rem] border-[14px] border-gray-900 dark:border-gray-800 shadow-[0_0_80px_rgba(0,0,0,0.4)] ring-1 ring-white/10" 
           : "rounded-none lg:rounded-2xl shadow-2xl"
@@ -1139,10 +1149,10 @@ export default function Layout() {
                 </div>
 
                 {/* Market Prediction Indicator */}
-                <div className="flex items-center px-2 sm:px-3 py-1 bg-yellow-50 dark:bg-yellow-900/30 rounded-full border border-yellow-100 dark:border-yellow-800 shadow-sm animate-pulse">
-                  <BrainCircuit className="w-3.5 h-3.5 sm:w-4 h-4 text-yellow-600 mr-1 sm:mr-1.5" />
+                <div className="flex items-center px-2 sm:px-3 py-1 bg-yellow-400/10 dark:bg-yellow-400/20 rounded-full border border-yellow-400/30 dark:border-yellow-400/50 shadow-sm animate-pulse">
+                  <BrainCircuit className="w-3.5 h-3.5 sm:w-4 h-4 text-yellow-600 dark:text-yellow-400 mr-1 sm:mr-1.5" />
                   <div className="flex flex-col leading-none">
-                    <span className="text-[8px] font-black text-yellow-700 dark:text-yellow-300 uppercase">Market Intel</span>
+                    <span className="text-[8px] font-black text-yellow-700 dark:text-yellow-300 uppercase tracking-tighter">Market Intel</span>
                     <div className="flex items-center gap-0.5">
                       <span className="text-[9px] font-black text-yellow-900 dark:text-yellow-100">{marketData?.direction === 'up' ? '▲' : '▼'}</span>
                       <span className="text-[9px] font-black text-yellow-900 dark:text-yellow-100">{marketData?.confidence || 77}%</span>
@@ -1158,9 +1168,9 @@ export default function Layout() {
                       "p-1.5 rounded-full transition-all",
                       !isDark ? "bg-white dark:bg-gray-700 shadow-sm text-yellow-500" : "text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
                     )}
-                    title="Light Mode (Arrow Up)"
+                    title="Light Mode"
                   >
-                    <ArrowUp className="w-3.5 h-3.5" />
+                    <Sun className="w-3.5 h-3.5" />
                   </button>
                   <button 
                     onClick={() => toggleTheme(true)}
@@ -1168,9 +1178,9 @@ export default function Layout() {
                       "p-1.5 rounded-full transition-all",
                       isDark ? "bg-gray-700 shadow-sm text-indigo-400" : "text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
                     )}
-                    title="Dark Mode (Arrow Down)"
+                    title="Dark Mode"
                   >
-                    <ArrowDown className="w-3.5 h-3.5" />
+                    <Moon className="w-3.5 h-3.5" />
                   </button>
                 </div>
 

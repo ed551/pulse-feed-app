@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { 
   Unlock, 
   Wallet, 
@@ -8,7 +8,8 @@ import {
   Loader2, 
   Coins,
   History,
-  Clock
+  Clock,
+  Shield
 } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import { useRevenue } from "../contexts/RevenueContext";
@@ -70,6 +71,42 @@ export default function Withdraw() {
 
   // Live platform stats for Developer role
   const [platformStats, setPlatformStats] = useState<any>(null);
+  const [platformTransactions, setPlatformTransactions] = useState<any[]>([]);
+
+  const isDeveloperAccount = currentUser?.email === 'edwinmuoha@gmail.com';
+
+  // Fetch platform transactions for audited ledger
+  useEffect(() => {
+    if (!currentUser || !isDeveloperAccount) return;
+    const q = query(
+      collection(db, "platform_transactions"),
+      orderBy("timestamp", "desc")
+    );
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      setPlatformTransactions(snapshot.docs.map(doc => doc.data()));
+    });
+    return () => unsubscribe();
+  }, [currentUser, isDeveloperAccount]);
+
+  // Audited platform totals
+  const platformTotals = useMemo(() => {
+    return platformTransactions.reduce((acc, tx) => {
+      const amt = Number(tx.amount || 0);
+      const platformAmt = Number(tx.platformAmount || amt);
+      const gross = Number(tx.totalAmount || amt);
+      
+      if (tx.type === 'payout' || tx.type === 'withdrawal' || tx.type === 'expense') {
+        acc.outflow += Math.abs(platformAmt);
+        acc.net -= Math.abs(platformAmt);
+      } else {
+        // Revenue
+        acc.inflow += gross;
+        acc.net += platformAmt;
+        acc.outflow += (gross - platformAmt);
+      }
+      return acc;
+    }, { inflow: 0, outflow: 0, net: 0 });
+  }, [platformTransactions]);
 
   // Fetch real-time platform statistics for the developer balance
   useEffect(() => {
@@ -100,11 +137,9 @@ export default function Withdraw() {
     return () => unsubscribe();
   }, [currentUser]);
 
-  const isDeveloperAccount = currentUser?.email === 'edwinmuoha@gmail.com';
-
   // Available balances
   const userBalance = Number(consistentPoints || 0);
-  const developerBalance = Number(platformStats?.platformShare || 0);
+  const developerBalance = Math.max(Number(platformStats?.platformShare || 0), platformTotals.net);
   const currentAvailableBalance = selectedRole === 'developer' ? developerBalance : userBalance;
 
   const executePayoutRequest = async (tokenValue: string, amountToWithdraw: number) => {
@@ -360,18 +395,29 @@ export default function Withdraw() {
                     <p className="text-[9px] font-black uppercase tracking-widest text-slate-500">Live Growth</p>
                     <p className="text-sm font-bold text-emerald-400">Ticking...</p>
                   </div>
+                  <div className="flex justify-between items-center text-[10px] text-gray-500 font-bold uppercase tracking-widest pt-2 border-t border-slate-900 mt-2">
+                    <div className="flex items-center gap-1.5 text-indigo-400">
+                      <Shield className="w-3 h-3" />
+                      <span>MoR Auto-Tax Remittance</span>
+                    </div>
+                    <span className="text-gray-400">VAT/GST/WHT Compliance</span>
+                  </div>
                 </div>
               </div>
 
-              {selectedRole === 'developer' && platformStats && isDeveloperAccount && (
-                <div className="mt-4 pt-4 border-t border-slate-900 grid grid-cols-2 gap-4 bg-indigo-500/5 -mx-6 px-6 pb-4">
+              {selectedRole === 'developer' && isDeveloperAccount && (
+                <div className="mt-4 pt-4 border-t border-slate-900 grid grid-cols-3 gap-2 bg-indigo-500/5 -mx-6 px-6 pb-4">
                   <div className="space-y-1">
-                    <p className="text-[9px] font-black uppercase tracking-widest text-indigo-400">Platform Inflow</p>
-                    <p className="text-sm font-bold text-slate-300">USDT {Number(platformStats.totalInflow || 0).toLocaleString()}</p>
+                    <p className="text-[8px] font-black uppercase tracking-widest text-indigo-400">Total Inflow</p>
+                    <p className="text-[11px] font-bold text-slate-300">USDT {platformTotals.inflow.toLocaleString()}</p>
                   </div>
                   <div className="space-y-1">
-                    <p className="text-[9px] font-black uppercase tracking-widest text-indigo-400">Platform Net Profit</p>
-                    <p className="text-sm font-bold text-indigo-400">USDT {Number(platformStats.platformShare || 0).toLocaleString()}</p>
+                    <p className="text-[8px] font-black uppercase tracking-widest text-rose-400">Total Outflow</p>
+                    <p className="text-[11px] font-bold text-rose-300">USDT {platformTotals.outflow.toLocaleString()}</p>
+                  </div>
+                  <div className="space-y-1 text-right">
+                    <p className="text-[8px] font-black uppercase tracking-widest text-emerald-400">Net (Developer)</p>
+                    <p className="text-[11px] font-bold text-emerald-400">USDT {platformTotals.net.toLocaleString()}</p>
                   </div>
                 </div>
               )}

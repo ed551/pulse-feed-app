@@ -861,17 +861,29 @@ export default function PlatformDashboard() {
     }, { payouts: 0, expenses: 0, revenueIn: 0, refunds: 0, grossRevenueIn: 0, ledgerBalance: 0 });
   }, [platformTransactions]);
 
+  // Simplified balance logic: Sum of all platform impacts
+  const auditBalance = totals.ledgerBalance;
+  const auditGrossRevenue = totals.grossRevenueIn;
+
   const stats = useMemo(() => {
     const userWalletSum = users.reduce((acc, u) => acc + (u.balance || 0), 0);
-    const derivedRevenue = dbStats.totalInflow || totals.revenueIn;
-    const derivedOutflow = dbStats.totalOutflow || (totals.payouts + totals.expenses);
-    const derivedShare = derivedRevenue - derivedOutflow;
+    
+    // Audited logic from Platform Transactions Ledger
+    // platformRevenue (Inflow) = Sum of all totalAmount (100% Inflow)
+    // platformShare (Net) = Inflow - User Accruals - Expenses - Payouts
+    
+    const auditInflow = totals.grossRevenueIn;
+    const auditNet = totals.ledgerBalance;
+    
+    const derivedRevenue = Math.max(dbStats.platformRevenue || 0, auditInflow);
+    const derivedShare = Math.max(dbStats.platformShare || 0, auditNet);
+    const derivedOutflow = derivedRevenue - derivedShare; // This is (User Accruals + Expenses + Payouts)
 
     return {
       ...dbStats,
-      platformRevenue: derivedRevenue, // Total Inflow
-      platformShare: derivedShare, // Total Net (Dev)
-      totalOutflow: derivedOutflow,
+      platformRevenue: derivedRevenue, // 100% Gross Inflow
+      platformShare: derivedShare, // Developer Net Revenue
+      totalOutflow: derivedOutflow, // Total Outflow (User Shares + Costs)
       totalUserBalances: userWalletSum,
       unredeemedRevenue: userWalletSum,
       totalPoints: users.reduce((acc, u) => acc + (u.points || 0), 0),
@@ -880,10 +892,6 @@ export default function PlatformDashboard() {
       potentialRevenue: (users.length || dbStats.totalUsers || 1) * 80 * 0.15
     };
   }, [dbStats, totals, users]);
-
-  // Simplified balance logic: Sum of all platform impacts
-  const auditBalance = totals.ledgerBalance;
-  const auditGrossRevenue = totals.grossRevenueIn;
 
   // Withdrawable Liquidity: The amount platform considers its own minus any uncleared expenses
   const netWithdrawableLiquidity = Math.max(0, auditBalance);
@@ -2062,7 +2070,7 @@ export default function PlatformDashboard() {
           </button>
           <button 
             onClick={() => window.location.hash = '#/operations'}
-            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl font-bold text-xs shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 transition-all border border-indigo-500/50"
+            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 dark:bg-indigo-500 text-white rounded-xl font-bold text-xs shadow-lg shadow-indigo-600/20 dark:shadow-indigo-500/20 hover:bg-indigo-700 dark:hover:bg-indigo-600 transition-all border border-indigo-500/50 dark:border-indigo-400/50"
           >
             <Building2 className="w-3 h-3" />
             Operations HQ
@@ -3367,7 +3375,7 @@ export default function PlatformDashboard() {
               </div>
               <p className="text-xs font-black text-indigo-100 uppercase tracking-widest mb-1">Total Revenue Net</p>
               <h3 className="text-4xl font-black tracking-tighter mb-1">USDT {Number(stats.platformShare || 0).toLocaleString()}</h3>
-              <p className="text-[10px] text-indigo-100/60 font-bold uppercase tracking-widest mt-3 italic leading-tight">Developer Revenue (Includes 20% User Share)</p>
+              <p className="text-[10px] text-indigo-100/60 font-bold uppercase tracking-widest mt-3 italic leading-tight">Developer Revenue (Platform Payout Reserve)</p>
             </motion.div>
 
             {/* Active Users */}

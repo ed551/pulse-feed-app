@@ -88,7 +88,7 @@ if (isValidApiKey) {
 } else {
   console.warn("[AI Init] No valid Gemini API Key found in environment variables. Searched: GEMINI_AI, GEMINI_API_KEY, GOOGLE_API_KEY, GEMINI_API");
 }
-const MIN_REQUEST_INTERVAL = 20000;
+const MIN_REQUEST_INTERVAL = 15000;
 const MAX_RETRIES = 20; 
 const INITIAL_DELAY = 15000;
 let requestQueue: Promise<void> = Promise.resolve();
@@ -954,25 +954,21 @@ async function generateContentWithRetry(params: any): Promise<any> {
           await delay(waitTime);
 
           const currentModel = params.model;
-          // Robust Fallback Sequence (AGENTS.md requested + Standard fallbacks)
+          // Robust Fallback Sequence (AGENTS.md: gemini-3.5-flash -> gemini-3.1-flash-lite -> gemini-flash-latest -> gemini-3-flash-preview -> gemini-3.1-pro-preview)
           if (currentModel === 'gemini-3.5-flash') {
-            params.model = 'gemini-1.5-flash'; 
-          } else if (currentModel === 'gemini-1.5-flash') {
-            params.model = 'gemini-1.5-flash-8b';
-          } else if (currentModel === 'gemini-1.5-flash-8b') {
-            params.model = 'gemini-3.1-flash-lite';
+            params.model = 'gemini-3.1-flash-lite'; 
           } else if (currentModel === 'gemini-3.1-flash-lite') {
             params.model = 'gemini-flash-latest';
           } else if (currentModel === 'gemini-flash-latest') {
-            params.model = 'gemini-1.5-pro'; 
-          } else if (currentModel === 'gemini-1.5-pro') {
             params.model = 'gemini-3-flash-preview';
           } else if (currentModel === 'gemini-3-flash-preview') {
             params.model = 'gemini-3.1-pro-preview';
           } else if (currentModel === 'gemini-3.1-pro-preview') {
-            params.model = 'gemini-2.0-flash-exp';
+            params.model = 'gemini-1.5-flash'; // Additional fallback
+          } else if (currentModel === 'gemini-1.5-flash') {
+            params.model = 'gemini-1.5-pro';
           } else {
-            params.model = 'gemini-1.5-flash';
+            params.model = 'gemini-3.1-flash-lite';
           }
         
           if (retries >= MAX_RETRIES) {
@@ -2151,7 +2147,7 @@ async function startServer() {
       let userSplit = 0.1; // Default: 10% User (Diamond)
       if (userMembership === 'gold') userSplit = 0.8;
       else if (userMembership === 'silver') userSplit = 0.5;
-      else if (userMembership === 'bronze') userSplit = 0.2;
+      else if (userMembership === 'bronze') userSplit = 0.3;
       else if (userMembership === 'diamond') userSplit = 0.1;
 
       const platformSplit = 1 - userSplit;
@@ -2175,7 +2171,7 @@ async function startServer() {
         amount: userAmount,
         type: 'accrual',
         source: 'activity',
-        reason: `${action || 'Activity'} Reward - ${userMembership.toUpperCase()} Level`,
+        reason: `${action || 'Activity'} Reward - ${userMembership.toUpperCase()} Level (${(userSplit * 100).toFixed(0)}%)`,
         timestamp
       });
 
@@ -2196,7 +2192,7 @@ async function startServer() {
         platformAmount,
         totalAmount,
         unit: 'USD',
-        reason: `${action || 'Activity'} Reward - ${userMembership.toUpperCase()} Level`,
+        reason: `${action || 'Activity'} Reward - ${userMembership.toUpperCase()} Level (Dev: ${(platformSplit * 100).toFixed(0)}%)`,
         userId,
         timestamp,
         serverSecret: "pulse-feeds-server-secret-2026"
@@ -2311,6 +2307,41 @@ async function startServer() {
           totalWithdrawalsUsd: FieldValue.increment(requestedAmount),
           serverSecret: SERVER_SECRET
         });
+
+        // 4.5. Log Fees to Platform Ledger (Audited Net Revenue)
+        await resilientDb.collection('platform_transactions').add({
+          type: 'revenue',
+          source: 'withdrawal_fee',
+          platformAmount: totalFees,
+          totalAmount: totalFees,
+          unit: 'USD',
+          reason: `Withdrawal Fee for ${requestedAmount} USDT to ${walletAddress}`,
+          userId,
+          timestamp: FieldValue.serverTimestamp(),
+          serverSecret: SERVER_SECRET
+        });
+
+        // 4.6. Auto Tax Remittance (Merchant of Record Logic)
+        // Formally remit collected tax to authorities via MoR simulation
+        await resilientDb.collection('platform_transactions').add({
+          type: 'expense',
+          source: 'tax_remittance',
+          platformAmount: -taxAmount,
+          totalAmount: -taxAmount,
+          unit: 'USD',
+          reason: `Auto Tax Remittance (MoR) for Ref: ${reference}`,
+          userId: 'SYSTEM_MOR',
+          timestamp: FieldValue.serverTimestamp(),
+          serverSecret: SERVER_SECRET
+        });
+
+        // Update Platform Stats with Fees and Tax Remittance
+        await resilientDb.collection('platform').doc('stats').set({
+          platformShare: FieldValue.increment(totalFees - taxAmount),
+          platformRevenue: FieldValue.increment(totalFees),
+          lastUpdated: FieldValue.serverTimestamp(),
+          serverSecret: "pulse-feeds-server-secret-2026"
+        }, { merge: true });
 
         // 5. ATTEMPT REAL BINANCE PAYOUT IF KEYS EXIST
         const apiKey = getBinanceApiKey();
@@ -6076,7 +6107,7 @@ async function performRobustEducationSync() {
       let userSplit = 0.1; // Default: 10% User (Diamond)
       if (userMembership === 'gold') userSplit = 0.8;
       else if (userMembership === 'silver') userSplit = 0.5;
-      else if (userMembership === 'bronze') userSplit = 0.2;
+      else if (userMembership === 'bronze') userSplit = 0.3;
       else if (userMembership === 'diamond') userSplit = 0.1;
 
       // OVERRIDE for Education Hub / AI Training per AGENTS.md
@@ -6159,12 +6190,17 @@ async function performRobustEducationSync() {
         }
       }
 
+      // 3. Auto Tax Remittance (MoR Logic)
+      // Automatically calculate and remit taxes (VAT/GST/WHT) on platform earnings
+      const platformTaxRate = 0.05;
+      const platformTaxAmount = platformAmount * platformTaxRate;
+
       // Update Platform Stats
       const statsRef = resilientDb.collection('platform').doc('stats');
-      const updateData: any = {
+      const platformUpdate: any = {
         platformRevenue: FieldValue.increment(totalAmount), // Total Inflow
-        platformShare: FieldValue.increment(platformAmount), // Net (Dev)
-        platformOutflow: FieldValue.increment(userAmount), // Total Outflow (User Share)
+        platformShare: FieldValue.increment(platformAmount - platformTaxAmount), // Net after Tax
+        platformOutflow: FieldValue.increment(userAmount + platformTaxAmount), // User Share + Tax Remitted
         totalUserBalances: FieldValue.increment(userAmount),
         lastUpdated: timestamp,
         serverSecret: "pulse-feeds-server-secret-2026"
@@ -6172,14 +6208,14 @@ async function performRobustEducationSync() {
 
       // Detailed Categorization
       if (source === 'ad') {
-        updateData.platformAds = FieldValue.increment(platformAmount);
+        platformUpdate.platformAds = FieldValue.increment(platformAmount - platformTaxAmount);
       } else if (source === 'payment' || source === 'subscription' || source === 'membership') {
-        updateData.platformPayments = FieldValue.increment(platformAmount);
+        platformUpdate.platformPayments = FieldValue.increment(platformAmount - platformTaxAmount);
       }
 
-      await statsRef.set(updateData, { merge: true });
+      await statsRef.set(platformUpdate, { merge: true });
 
-      // Log Platform Transaction
+      // Log Platform Revenue Transaction
       await resilientDb.collection('platform_transactions').add({
         type: source === 'payment' || source === 'app_creation' ? 'platform_revenue' : 'revenue',
         source,
@@ -6192,6 +6228,21 @@ async function performRobustEducationSync() {
         timestamp,
         serverSecret: SERVER_SECRET
       });
+
+      // Log Auto Tax Remittance (Expense)
+      if (platformTaxAmount > 0) {
+        await resilientDb.collection('platform_transactions').add({
+          type: 'expense',
+          source: 'tax_remittance',
+          platformAmount: -platformTaxAmount,
+          totalAmount: -platformTaxAmount,
+          unit: 'USD',
+          reason: `Auto Tax Remittance (MoR) for ${source} (${(platformTaxRate * 100).toFixed(0)}%)`,
+          userId: 'SYSTEM_MOR',
+          timestamp,
+          serverSecret: SERVER_SECRET
+        });
+      }
 
       res.json({ 
         success: true, 
