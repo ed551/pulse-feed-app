@@ -237,7 +237,7 @@ export default function Withdraw() {
       console.log("[Withdraw] API Response:", data);
 
       if (resp.status === 401 && data.error === "SCA_REQUIRED") {
-        setWithdrawError("Google Security Verification is required. Please try again.");
+        setWithdrawError(data.message || "Google Security Verification is required. Please try again.");
         setWithdrawLoading(false);
         return;
       }

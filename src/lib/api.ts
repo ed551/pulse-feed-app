@@ -10,7 +10,7 @@ export const getApiUrl = (path: string): string => {
 
   const rawBaseUrl = import.meta.env.VITE_API_BASE_URL;
   const baseUrl = (rawBaseUrl || 'https://89-168-120-135.sslip.io').trim();
-  const relayUrl = (import.meta.env.VITE_API_RELAY_URL || 'https://ais-pre-vpm462ccg3jpy6a7n4c54f-708516523970.europe-west2.run.app').trim();
+  const relayUrl = (import.meta.env.VITE_API_RELAY_URL || 'https://ais-dev-vpm462ccg3jpy6a7n4c54f-708516523970.europe-west2.run.app').trim();
   
   const isHttps = typeof window !== 'undefined' && window.location.protocol === 'https:';
   const isSurge = typeof window !== 'undefined' && window.location.hostname.includes('surge.sh');
@@ -35,16 +35,13 @@ export const getApiUrl = (path: string): string => {
   }
 
   // If we are actually ON a run.app URL (like in shared preview), use relative paths
-  if (isRunApp && !isProxied) {
+  // This is the most reliable way to ensure same-origin requests work
+  if (isRunApp) {
     return cleanPath;
   }
 
-  // If we are in a proxied environment (AI Studio Editor), we must use the absolute relay URL
+  // If we are in a proxied environment (AI Studio Editor), and not on run.app, we must use the relay
   if (isProxied && !isLocal) {
-    // If the current origin itself is a run.app URL, we can use it as the relay
-    // This happens if the user opens the preview in a new tab from the editor
-    if (isRunApp) return cleanPath;
-
     const cleanRelay = relayUrl.endsWith('/') ? relayUrl.slice(0, -1) : relayUrl;
     return `${cleanRelay}${cleanPath}`;
   }
