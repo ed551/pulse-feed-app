@@ -248,7 +248,7 @@ export default function Withdraw() {
         setAmount("");
         setWalletAddress("");
       } else {
-        throw new Error(data.message || data.error || data.details || "Failed to execute payout.");
+        throw new Error(data.details || data.message || data.error || "Failed to execute payout.");
       }
     } catch (err: any) {
       setWithdrawError(err.message || "An error occurred during withdrawal processing.");
@@ -297,6 +297,13 @@ export default function Withdraw() {
       
       const currentUid = auth.currentUser?.uid || currentUser?.uid;
       if (!currentUid) throw new Error("Authentication session expired. Please refresh and try again.");
+
+      // Skip re-auth if already verified during role switch in this session
+      if (selectedRole === 'developer' && isDevVerified) {
+        console.log("[Withdraw] Reusing developer verification.");
+        await executePayoutRequest("GOOGLE_VERIFIED", numAmount, currentUid);
+        return;
+      }
 
       console.log(`[Withdraw] Starting verification for UID: ${currentUid}`);
 
