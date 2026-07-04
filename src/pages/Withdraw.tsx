@@ -228,8 +228,13 @@ export default function Withdraw() {
       } else {
         const text = await resp.text();
         console.error("[Withdraw] Received non-JSON response:", text);
-        throw new Error(`Server returned unexpected response (${resp.status}). It might be a configuration issue.`);
+        // If it's HTML, it might be the SPA fallback. Check for common HTML tags to confirm.
+        const isHtml = text.trim().toLowerCase().startsWith('<!doctype html') || text.includes('<html');
+        const previewText = text.substring(0, 100).replace(/\n/g, ' ');
+        throw new Error(`Server returned unexpected response (${resp.status})${isHtml ? ' (HTML Fallback)' : ''}. Content: ${previewText}...`);
       }
+
+      console.log("[Withdraw] API Response:", data);
 
       if (resp.status === 401 && data.error === "SCA_REQUIRED") {
         setWithdrawError("Google Security Verification is required. Please try again.");
