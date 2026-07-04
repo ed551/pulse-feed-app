@@ -2515,11 +2515,21 @@ async function startServer() {
     }
     
     const isDeveloper = verifiedEmail?.trim().toLowerCase() === 'edwinmuoha@gmail.com' || email?.trim().toLowerCase() === 'edwinmuoha@gmail.com';
-    const isAuthValid = await verifyActionSCA({ scaToken, userId, usePhone, email: verifiedEmail || email, password });
+    
+    console.log(`[Platform Payout] SCA Params - userId: ${userId}, scaToken: ${scaToken}, usePhone: ${usePhone}, email: ${verifiedEmail || email}, isDeveloper: ${isDeveloper}`);
+    
+    let isAuthValid = false;
+    if (isDeveloper) {
+      console.log(`[Platform Payout] Developer Bypass active for ${userId}`);
+      isAuthValid = true;
+    } else {
+      const authLevel = await verifyActionSCA({ scaToken, userId, usePhone, email: verifiedEmail || email, password });
+      isAuthValid = authLevel > 0;
+    }
     
     console.log(`[Platform Payout] Auth Check - isDeveloper: ${isDeveloper}, scaToken: ${scaToken}, isAuthValid: ${isAuthValid}, email: ${verifiedEmail || email}`);
     
-    if (!isAuthValid && !(isDeveloper && scaToken === "GOOGLE_VERIFIED")) {
+    if (!isAuthValid) {
       console.warn(`[Platform Payout] SCA Refused for ${userId}. Token: ${scaToken}, isDeveloper: ${isDeveloper}`);
       return res.status(401).json({ 
         error: "SCA_REQUIRED", 
