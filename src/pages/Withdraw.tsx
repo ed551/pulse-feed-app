@@ -10,6 +10,7 @@ import {
   History,
   Clock,
   Shield,
+  ShieldCheck,
   RefreshCw
 } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
@@ -483,50 +484,56 @@ export default function Withdraw() {
               )}
 
               {!withdrawSuccess ? (
-                <form onSubmit={handleFormSubmit} className="space-y-5">
-                  <div>
-                    <label className="text-xs font-black tracking-wider text-slate-400 uppercase ml-1 block mb-2">
-                      USDT Deposit Address (TRC20/ERC20/SOL)
-                    </label>
-                    <div className="relative">
-                      <Wallet className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 w-5 h-5" />
-                      <input
-                        type="text"
-                        value={walletAddress}
-                        onChange={(e) => setWalletAddress(e.target.value)}
-                        placeholder="Paste your USDT wallet address"
-                        required
-                        className="w-full pl-12 pr-4 py-4 bg-slate-950 border-2 border-slate-800 rounded-2xl focus:outline-none focus:border-purple-500 transition-all font-mono text-xs text-white"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-3 gap-4">
-                    <div className="col-span-1">
-                      <label className="text-xs font-black tracking-wider text-slate-400 uppercase ml-1 block mb-2">
-                        Network
+                <form onSubmit={handleFormSubmit} className="space-y-8">
+                  {/* Step-by-Step Procedure */}
+                  <div className="space-y-6">
+                    {/* Step 1: Asset */}
+                    <div className="relative pl-8 before:absolute before:left-0 before:top-0 before:bottom-0 before:w-px before:bg-slate-200 dark:before:bg-slate-800">
+                      <div className="absolute left-[-4px] top-0 w-2 h-2 rounded-full bg-purple-500" />
+                      <label className="text-[10px] font-black tracking-[0.2em] text-slate-400 dark:text-slate-500 uppercase block mb-3">
+                        Procedure 01: Asset (USDT)
                       </label>
-                      <select
-                        value={cryptoNetwork}
-                        onChange={(e) => setCryptoNetwork(e.target.value)}
-                        className="w-full py-4 px-3 bg-slate-950 border-2 border-slate-800 rounded-2xl focus:outline-none focus:border-purple-500 transition-all font-bold text-xs uppercase text-slate-300"
-                      >
-                        <option value="TRX">TRX (TRC20)</option>
-                        <option value="SOL">SOL (USDT)</option>
-                        <option value="ETH">ETH (ERC20)</option>
-                        <option value="BSC">BSC (BEP20)</option>
-                      </select>
+                      <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4 flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 bg-emerald-500/10 rounded-lg flex items-center justify-center text-emerald-400 font-bold text-xs">
+                            $
+                          </div>
+                          <span className="font-bold text-sm text-white">USDT (Tether)</span>
+                        </div>
+                        <span className="text-[10px] font-black text-emerald-500 uppercase tracking-widest bg-emerald-500/10 px-2 py-0.5 rounded">Active</span>
+                      </div>
                     </div>
 
-                    <div className="col-span-2">
-                      <label className="text-xs font-black tracking-wider text-slate-400 uppercase ml-1 block mb-2 flex justify-between items-center">
-                        <span>Withdraw Amount</span>
+                    {/* Step 2: Address */}
+                    <div className="relative pl-8 before:absolute before:left-0 before:top-0 before:bottom-0 before:w-px before:bg-slate-200 dark:before:bg-slate-800">
+                      <div className="absolute left-[-4px] top-0 w-2 h-2 rounded-full bg-purple-500" />
+                      <label className="text-[10px] font-black tracking-[0.2em] text-slate-400 dark:text-slate-500 uppercase block mb-3">
+                        Procedure 02: Address
+                      </label>
+                      <div className="relative">
+                        <Wallet className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 w-5 h-5" />
+                        <input
+                          type="text"
+                          value={walletAddress}
+                          onChange={(e) => setWalletAddress(e.target.value)}
+                          placeholder="Paste your USDT wallet address"
+                          required
+                          className="w-full pl-12 pr-4 py-4 bg-slate-950 border border-slate-800 rounded-2xl focus:outline-none focus:border-purple-500 transition-all font-mono text-xs text-white"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Step 3: Amount */}
+                    <div className="relative pl-8 before:absolute before:left-0 before:top-0 before:bottom-0 before:w-px before:bg-slate-200 dark:before:bg-slate-800">
+                      <div className="absolute left-[-4px] top-0 w-2 h-2 rounded-full bg-purple-500" />
+                      <label className="text-[10px] font-black tracking-[0.2em] text-slate-400 dark:text-slate-500 uppercase block mb-3 flex justify-between items-center">
+                        <span>Procedure 03: Amount</span>
                         <button
                           type="button"
                           onClick={() => setAmount(Math.max(0, currentAvailableBalance).toFixed(4))}
-                          className="text-[10px] text-purple-400 hover:text-purple-300 font-extrabold uppercase tracking-widest bg-purple-500/10 px-2 py-0.5 rounded border border-purple-500/20"
+                          className="text-[9px] text-purple-400 hover:text-purple-300 font-black uppercase tracking-widest"
                         >
-                          Max
+                          Withdraw Max
                         </button>
                       </label>
                       <div className="relative">
@@ -539,52 +546,76 @@ export default function Withdraw() {
                           onChange={(e) => setAmount(e.target.value)}
                           placeholder="Min 100 USDT"
                           required
-                          className="w-full pl-14 pr-4 py-4 bg-slate-950 border-2 border-slate-800 rounded-2xl focus:outline-none focus:border-purple-500 transition-all font-bold text-white text-sm"
+                          className="w-full pl-14 pr-4 py-4 bg-slate-950 border border-slate-800 rounded-2xl focus:outline-none focus:border-purple-500 transition-all font-bold text-white text-sm"
                         />
                       </div>
                     </div>
+
+                    {/* Step 4: Network */}
+                    <div className="relative pl-8 before:absolute before:left-0 before:top-0 before:bottom-0 before:w-px before:bg-slate-200 dark:before:bg-slate-800">
+                      <div className="absolute left-[-4px] top-0 w-2 h-2 rounded-full bg-purple-500" />
+                      <label className="text-[10px] font-black tracking-[0.2em] text-slate-400 dark:text-slate-500 uppercase block mb-3">
+                        Procedure 04: Network
+                      </label>
+                      <div className="grid grid-cols-2 gap-3">
+                        {['TRX', 'SOL', 'ETH', 'BSC'].map((net) => (
+                          <button
+                            key={net}
+                            type="button"
+                            onClick={() => setCryptoNetwork(net)}
+                            className={`py-3 px-4 rounded-xl border-2 transition-all text-xs font-black tracking-widest uppercase ${
+                              cryptoNetwork === net 
+                                ? 'border-purple-500 bg-purple-500/10 text-white' 
+                                : 'border-slate-800 bg-slate-950 text-slate-500 hover:border-slate-700'
+                            }`}
+                          >
+                            {net} {net === 'TRX' ? '(TRC20)' : (net === 'ETH' ? '(ERC20)' : '')}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Step 5: Verification & Confirm */}
+                    <div className="relative pl-8">
+                      <div className="absolute left-[-4px] top-0 w-2 h-2 rounded-full bg-emerald-500" />
+                      <label className="text-[10px] font-black tracking-[0.2em] text-slate-400 dark:text-slate-500 uppercase block mb-3">
+                        Procedure 05: Gmail Login Verification
+                      </label>
+                      
+                      {withdrawError && (
+                        <div className="text-xs font-bold text-red-400 bg-red-950/10 border border-red-500/10 rounded-xl p-3.5 flex items-center gap-2 mb-4">
+                          <XCircle className="w-4 h-4 flex-shrink-0" />
+                          {withdrawError}
+                        </div>
+                      )}
+
+                      <div className="bg-slate-950/50 rounded-2xl border border-slate-800 p-4 mb-4 space-y-2">
+                        <div className="flex justify-between items-center text-[10px]">
+                          <span className="text-slate-500 font-bold uppercase">Net Amount</span>
+                          <span className="text-emerald-400 font-black">{formatCurrency(fees.net)}</span>
+                        </div>
+                        <p className="text-[9px] text-slate-500 italic">Fees and taxes will be deducted automatically.</p>
+                      </div>
+
+                      <button
+                        type="submit"
+                        disabled={withdrawLoading || currentAvailableBalance < 100}
+                        className="w-full py-5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-black rounded-2xl transition-all shadow-lg shadow-purple-600/20 active:scale-98 flex items-center justify-center gap-3 text-xs uppercase tracking-widest"
+                      >
+                        {withdrawLoading ? (
+                          <>
+                            <Loader2 className="w-5 h-5 animate-spin" />
+                            Processing Request...
+                          </>
+                        ) : (
+                          <>
+                            <ShieldCheck className="w-5 h-5" />
+                            Withdraw the Request
+                          </>
+                        )}
+                      </button>
+                    </div>
                   </div>
-
-                  {withdrawError && (
-                    <div className="text-xs font-bold text-red-400 bg-red-950/10 border border-red-500/10 rounded-xl p-3.5 flex items-center gap-2">
-                      <XCircle className="w-4 h-4 flex-shrink-0" />
-                      {withdrawError}
-                    </div>
-                  )}
-
-                  <div className="bg-slate-950/50 rounded-2xl border border-slate-800 p-4 space-y-3">
-                    <div className="flex justify-between items-center text-[10px]">
-                      <span className="text-slate-500 font-bold uppercase">Withdrawal Amount</span>
-                      <span className="text-slate-300 font-black">{formatCurrency(parseFloat(amount) || 0)}</span>
-                    </div>
-                    <div className="flex justify-between items-center text-[10px]">
-                      <span className="text-slate-500 font-bold uppercase">Network Fee (TRC20)</span>
-                      <span className="text-rose-400 font-black">-{formatCurrency(fees.network)}</span>
-                    </div>
-                    <div className="flex justify-between items-center text-[10px]">
-                      <span className="text-slate-500 font-bold uppercase">Tax & Processing (7%)</span>
-                      <span className="text-rose-400 font-black">-{formatCurrency(fees.tax + fees.platform)}</span>
-                    </div>
-                    <div className="pt-2 border-t border-slate-800 flex justify-between items-center">
-                      <span className="text-[11px] text-white font-black uppercase tracking-widest">Net Amount</span>
-                      <span className="text-lg text-emerald-400 font-black">{formatCurrency(fees.net)}</span>
-                    </div>
-                  </div>
-
-                  <button
-                    type="submit"
-                    disabled={withdrawLoading || currentAvailableBalance < 100}
-                    className="w-full py-4 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-black rounded-2xl transition-all shadow-lg shadow-purple-600/20 active:scale-98 flex items-center justify-center gap-2 text-sm uppercase tracking-wider"
-                  >
-                    {withdrawLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <ArrowRight className="w-4 h-4" />}
-                    Confirm Withdrawal
-                  </button>
-                  
-                  {currentAvailableBalance < 100 && (
-                    <p className="text-[10px] text-center text-slate-500 font-bold uppercase tracking-widest">
-                      Threshold: 100 USDT Required
-                    </p>
-                  )}
                 </form>
               ) : (
                 <div className="py-8 text-center animate-in zoom-in-95 duration-300">
