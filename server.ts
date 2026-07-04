@@ -1640,13 +1640,22 @@ async function verifyActionSCA(authData: { scaToken?: string; userId?: string; u
 // Verify User Authorization and return assurance level (0-3)
 async function verifyUserAuthorizationLevel(userId: string, authData: { scaToken?: string; totpCode?: string; email?: string; password?: string; usePhone?: boolean }) {
   if (process.env.SKIP_SCA === 'true') return 3;
-  if (!userId) return 0;
+  if (!userId) {
+    console.warn("[SCA] No userId provided for verification.");
+    return 0;
+  }
+
+  // EARLY BYPASS FOR TRUSTED TOKENS (Highest Priority)
+  if (authData.scaToken === "GOOGLE_VERIFIED" || authData.scaToken === "PASSKEY_AUTH_TOKEN") {
+    console.log(`[SCA] Trusted Token detected: ${authData.scaToken} for user ${userId}. Granting Level 2.`);
+    return 2;
+  }
 
   console.log(`[SCA] Verifying Level for ${userId}. Data keys: ${Object.keys(authData).join(',')}`);
 
   const attempts = failedScaAttempts.get(userId);
   if (attempts && attempts.lockoutUntil > Date.now()) {
-    console.warn(`[SCA] User ${userId} is currently locked out.`);
+    console.warn(`[SCA] User ${userId} is currently locked out for ${Math.ceil((attempts.lockoutUntil - Date.now()) / 1000)}s.`);
     return 0;
   }
 
@@ -1665,11 +1674,7 @@ async function verifyUserAuthorizationLevel(userId: string, authData: { scaToken
   }
 
   // Level 2: TOTP/Phone/SMS/Email Verification (Step-up)
-  if (!isSuccess && (authData.totpCode || authData.usePhone || (authData.email && !authData.password) || authData.scaToken === "PASSKEY_AUTH_TOKEN" || authData.scaToken === "GOOGLE_VERIFIED")) {
-    if (authData.scaToken === "GOOGLE_VERIFIED") {
-      console.log(`[SCA] Google Verification accepted for ${userId}`);
-      return 2;
-    }
+  if (!isSuccess && (authData.totpCode || authData.usePhone || (authData.email && !authData.password))) {
     // Check for recent verified OTP in DB (Step-up)
     try {
       const userDoc = await resilientDb.collection('users').doc(userId).get();

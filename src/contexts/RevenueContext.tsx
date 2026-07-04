@@ -141,18 +141,16 @@ export const RevenueProvider: React.FC<{ children: React.ReactNode }> = ({ child
   // User gets 80% if Gold, 50% if Silver, 30% if Bronze, 10% if Diamond (Foundation).
   const getActiveRatePerSecond = () => {
     const membership = (userData?.membershipLevel || 'diamond').toLowerCase();
-    let userSplit = 0.1; // Default Diamond 10%
-    if (membership === 'gold') userSplit = 0.8;
-    else if (membership === 'silver') userSplit = 0.5;
-    else if (membership === 'bronze') userSplit = 0.3;
-    else if (membership === 'diamond') userSplit = 0.1;
+    let userPercentage = 0.10; // Default Diamond
+    if (membership === 'gold') userPercentage = 0.80;
+    else if (membership === 'silver') userPercentage = 0.50;
+    else if (membership === 'bronze') userPercentage = 0.30;
     
-    // User requested "Amount in USDT should be equal to time" for Gold.
-    // Gold is 80%. So to get 1 USDT per hour for Gold:
+    // To get 1 USDT per hour for Gold (80%):
     // 1.0 / 0.8 = 1.25 USDT per hour base total.
     const baseRatePerHour = 1.25;
     const baseRatePerSec = baseRatePerHour / 3600;
-    return baseRatePerSec * userSplit;
+    return baseRatePerSec * userPercentage;
   };
 
   const monitorBehaviorWithAI = async () => {
@@ -615,7 +613,16 @@ const addRevenue = async (userUsdAmount: number, platformUsdAmount: number, reas
   useEffect(() => {
     const interval = setInterval(() => {
       if (!isIdle && !pointsLocked && currentUser) {
-        const rate = getActiveRatePerSecond();
+        const membership = (userData?.membershipLevel || 'diamond').toLowerCase();
+        let userPercentage = 0.10; // Default Diamond/Free
+        if (membership === 'gold') userPercentage = 0.80;
+        else if (membership === 'silver') userPercentage = 0.50;
+        else if (membership === 'bronze') userPercentage = 0.30;
+
+        const baseRatePerHour = 1.25; // 1.25 USDT total generated per hour
+        const baseRatePerSec = baseRatePerHour / 3600;
+        const rate = baseRatePerSec * userPercentage;
+        
         activeSecondsRef.current += 1;
         setSessionActiveSeconds(activeSecondsRef.current);
         setTotalActiveTime(prev => prev + 1);
@@ -623,7 +630,7 @@ const addRevenue = async (userUsdAmount: number, platformUsdAmount: number, reas
         // Accumulate pending points
         pendingUserPointsRef.current += rate;
         pendingUserValueRef.current += rate;
-        pendingPlatformValueRef.current += rate * (1/0.8 - 1); // Maintain ratio
+        pendingPlatformValueRef.current += baseRatePerSec * (1 - userPercentage);
         setPendingPoints(pendingUserPointsRef.current);
         setTotalEarnedToday(prev => prev + rate);
 

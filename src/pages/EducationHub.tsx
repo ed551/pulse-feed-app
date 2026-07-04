@@ -136,23 +136,31 @@ export default function EducationHub() {
 
     setEnrollingId(course.id);
     try {
-      // 50/50 Revenue Split for Course Enrollment & AI Training
-      // Total Enrollment Fee/Value: 2.60 USD / USDT
-      const totalEnrollmentValue = 2.60;
-      const userShare = totalEnrollmentValue * 0.5; // 50% to user
-      const platformShare = totalEnrollmentValue * 0.5; // 50% to platform
+      // Tiered Revenue Split for Course Enrollment & AI Training
+      // Gold: 80% User, Silver: 50% User, Bronze: 30% User, Diamond/Free: 10% User
+      const totalValue = 2.60;
+      const membership = (userData?.membershipLevel || 'diamond').toLowerCase();
+      
+      let userPercentage = 0.10; // Default Diamond/Free
+      if (membership === 'gold') userPercentage = 0.80;
+      else if (membership === 'silver') userPercentage = 0.50;
+      else if (membership === 'bronze') userPercentage = 0.30;
+
+      const userShare = totalValue * userPercentage;
+      const platformShare = totalValue * (1 - userPercentage);
 
       // 1. Update Course Enrollment State
       await updateDoc(doc(db, 'users', currentUser.uid), {
         enrolledCourses: arrayUnion(course.id),
+        points: increment(userShare),
         experience: increment(250)
       });
 
-      // 2. Use unified Revenue Engine for 50/50 Split (Handles audit logs for both)
-      await addRevenue(userShare, platformShare, `Course Enrollment: ${course.title}`, 'education');
+      // 2. Use unified Revenue Engine for split
+      await addRevenue(userShare, platformShare, `Course Enrollment & AI Training: ${course.title}`, 'education');
 
       showNotification("Education Milestone", { 
-        body: `Welcome to ${course.title}! You've been rewarded ${formatReward(userShare)} (50% share) while 50% (${formatCurrency(platformShare)}) fuels global engineering.` 
+        body: `Welcome to ${course.title}! You've been rewarded ${formatReward(userShare)} (${Math.round(userPercentage * 100)}% share) while ${Math.round((1-userPercentage) * 100)}% fuels global AI engineering.` 
       });
       setSelectedCourse(null);
     } catch (err) {

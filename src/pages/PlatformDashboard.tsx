@@ -9,7 +9,7 @@ import {
   PieChart, Info, AlertTriangle, CheckCircle2, Loader2, RefreshCw, PlusSquare,
   Mail, Key, KeyRound, Smartphone, BrainCircuit, FileText, Zap,
   Copy, ShieldAlert, ShieldOff, Settings, Plus, Trash2, XCircle, CheckCircle, Calendar, Clock,
-  Building2, Cpu, Globe, Database, Crown, Shield, Star, History, Sparkles, Radio, Unlock, PlusCircle
+  Building2, Cpu, Globe, Database, Crown, Shield, Star, History, Sparkles, Radio, Unlock, PlusCircle, LogIn
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useAuth } from '../contexts/AuthContext';
@@ -44,24 +44,89 @@ export default function PlatformDashboard() {
   const navigate = useNavigate();
   const { currentUser, userData } = useAuth();
 
+  const [isVerified, setIsVerified] = useState(false);
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [verifyError, setVerifyError] = useState("");
+
+  const handleSecondLogin = async () => {
+    setIsVerifying(true);
+    setVerifyError("");
+    try {
+      const { GoogleAuthProvider, reauthenticateWithPopup } = await import("firebase/auth");
+      const { auth } = await import("../lib/firebase");
+      
+      if (!auth.currentUser) throw new Error("Session expired.");
+      
+      const provider = new GoogleAuthProvider();
+      provider.setCustomParameters({ prompt: 'select_account' });
+      
+      await reauthenticateWithPopup(auth.currentUser, provider);
+      setIsVerified(true);
+    } catch (err: any) {
+      console.error("Verification failed:", err);
+      setVerifyError(err.message || "Second login failed. Please try again.");
+    } finally {
+      setIsVerifying(false);
+    }
+  };
+
   // Secondary security gate: Strictly only the developer's Gmail
   if (currentUser && currentUser.email !== 'edwinmuoha@gmail.com') {
     return (
-      <div className="min-h-screen bg-slate-900 flex items-center justify-center p-6">
-        <div className="bg-slate-800 border border-red-500/30 p-12 rounded-[2.5rem] shadow-2xl max-w-lg w-full text-center">
+      <div className="min-h-screen bg-white dark:bg-slate-900 flex items-center justify-center p-6 transition-colors duration-300">
+        <div className="bg-gray-50 dark:bg-slate-800 border border-red-500/30 p-12 rounded-[2.5rem] shadow-2xl max-w-lg w-full text-center">
           <div className="inline-flex p-5 bg-red-500/10 rounded-full mb-6">
             <Lock className="w-12 h-12 text-red-500" />
           </div>
-          <h1 className="text-3xl font-black text-white uppercase tracking-tighter mb-4">Access Restricted</h1>
-          <p className="text-slate-400 text-lg leading-relaxed mb-8">
+          <h1 className="text-3xl font-black text-gray-900 dark:text-white uppercase tracking-tighter mb-4">Access Restricted</h1>
+          <p className="text-gray-500 dark:text-slate-400 text-lg leading-relaxed mb-8">
             This terminal is strictly reserved for the developer's primary Gmail authentication. 
             Unauthorized access detected and logged.
           </p>
           <button 
             onClick={() => navigate('/')}
-            className="w-full py-4 bg-slate-700 hover:bg-slate-600 text-white font-bold rounded-2xl transition-all"
+            className="w-full py-4 bg-gray-200 dark:bg-slate-700 hover:bg-gray-300 dark:hover:bg-slate-600 text-gray-900 dark:text-white font-bold rounded-2xl transition-all"
           >
             Return to Safety
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Second Login Requirement
+  if (!isVerified) {
+    return (
+      <div className="min-h-screen bg-white dark:bg-slate-900 flex items-center justify-center p-6 transition-colors duration-300">
+        <div className="bg-gray-50 dark:bg-slate-800 border border-indigo-500/20 p-12 rounded-[2.5rem] shadow-2xl max-w-lg w-full text-center">
+          <div className="inline-flex p-5 bg-indigo-500/10 rounded-full mb-6">
+            <ShieldCheck className="w-12 h-12 text-indigo-500 animate-pulse" />
+          </div>
+          <h1 className="text-3xl font-black text-gray-900 dark:text-white uppercase tracking-tighter mb-4">Developer Verification</h1>
+          <p className="text-gray-500 dark:text-slate-400 text-lg leading-relaxed mb-8">
+            A second login is required to access the Platform Dashboard. Please verify your identity as the Head Developer.
+          </p>
+          
+          {verifyError && (
+            <div className="mb-6 p-4 bg-red-500/10 border border-red-500/20 rounded-2xl text-red-500 text-xs font-bold uppercase tracking-widest">
+              {verifyError}
+            </div>
+          )}
+
+          <button 
+            onClick={handleSecondLogin}
+            disabled={isVerifying}
+            className="w-full py-4 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-2xl transition-all shadow-xl shadow-indigo-600/20 flex items-center justify-center gap-2 uppercase tracking-widest text-sm"
+          >
+            {isVerifying ? <RefreshCw className="w-5 h-5 animate-spin" /> : <LogIn className="w-5 h-5" />}
+            {isVerifying ? "Verifying..." : "Verify Identity"}
+          </button>
+          
+          <button 
+            onClick={() => navigate('/')}
+            className="w-full mt-4 py-3 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 font-bold transition-all text-xs uppercase tracking-[0.2em]"
+          >
+            Cancel and Return
           </button>
         </div>
       </div>
@@ -2376,27 +2441,27 @@ export default function PlatformDashboard() {
             </div>
           </div>
 
-          <div className="p-6 bg-slate-900 rounded-3xl border border-slate-800 shadow-2xl">
-            <h3 className="text-white font-black uppercase tracking-widest text-xs mb-4 flex items-center gap-2">
+          <div className="p-6 bg-white dark:bg-slate-900 rounded-3xl border border-gray-100 dark:border-slate-800 shadow-2xl">
+            <h3 className="text-gray-900 dark:text-white font-black uppercase tracking-widest text-xs mb-4 flex items-center gap-2">
               <ShieldCheck className="w-4 h-4 text-emerald-400" />
               Accountability Checksum
             </h3>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div className="space-y-1">
-                  <p className="text-slate-500 text-[10px] font-black uppercase tracking-tighter">Verified Inflow</p>
-                  <p className="text-2xl font-black text-amber-400">{formatCurrency(totals.revenueIn + totals.refunds)}</p>
+                  <p className="text-gray-400 dark:text-slate-500 text-[10px] font-black uppercase tracking-tighter">Total Revenue Inflow</p>
+                  <p className="text-2xl font-black text-amber-500 dark:text-amber-400">{formatCurrency(totals.grossRevenueIn)}</p>
                 </div>
                 <div className="space-y-1">
-                  <p className="text-slate-500 text-[10px] font-black uppercase tracking-tighter">Verified Outflow</p>
-                  <p className="text-2xl font-black text-rose-400">{formatCurrency(totals.payouts + totals.expenses)}</p>
+                  <p className="text-gray-400 dark:text-slate-500 text-[10px] font-black uppercase tracking-tighter">Total Revenue Outflow</p>
+                  <p className="text-2xl font-black text-rose-500 dark:text-rose-400">{formatCurrency(totals.grossRevenueIn - totals.ledgerBalance)}</p>
                 </div>
                 <div className="space-y-1">
-                  <p className="text-slate-500 text-[10px] font-black uppercase tracking-tighter">Audit Ledger Balance</p>
-                  <p className="text-2xl font-black text-amber-500">{formatCurrency(auditBalance)}</p>
+                  <p className="text-gray-400 dark:text-slate-500 text-[10px] font-black uppercase tracking-tighter">Developer Revenue (Net)</p>
+                  <p className="text-2xl font-black text-amber-600 dark:text-amber-500">{formatCurrency(auditBalance)}</p>
                 </div>
               </div>
-            <div className="mt-6 pt-6 border-t border-slate-800 flex items-center justify-between">
-              <p className="text-[10px] text-slate-500 font-mono italic">Checksum Match: {Math.abs(stats.platformShare - auditBalance) < 0.01 ? 'TRUE' : 'WARNING: DISCREPANCY'}</p>
+            <div className="mt-6 pt-6 border-t border-gray-100 dark:border-slate-800 flex items-center justify-between">
+              <p className="text-[10px] text-gray-400 dark:text-slate-500 font-mono italic">Checksum Match: {Math.abs(stats.platformShare - auditBalance) < 0.01 ? 'TRUE' : 'WARNING: DISCREPANCY'}</p>
               <button 
                 onClick={handleRefresh}
                 className="text-[10px] text-indigo-400 font-black uppercase tracking-widest hover:text-indigo-300 transition-colors"
@@ -3045,7 +3110,7 @@ export default function PlatformDashboard() {
         <div className="space-y-8 animate-in fade-in duration-300">
           {/* Treasury Matrix Terminal */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            <div className="lg:col-span-1 bg-slate-900 border border-amber-500/20 rounded-[2.5rem] p-8 shadow-2xl relative overflow-hidden group">
+            <div className="lg:col-span-1 bg-white dark:bg-slate-900 border border-amber-500/20 rounded-[2.5rem] p-8 shadow-2xl relative overflow-hidden group">
               <div className="absolute top-0 right-0 p-8 opacity-5 group-hover:opacity-10 transition-opacity">
                 <TrendingUp className="w-40 h-40 text-amber-500 -rotate-12" />
               </div>
@@ -3056,8 +3121,8 @@ export default function PlatformDashboard() {
                       <Database className="w-6 h-6 text-amber-500" />
                     </div>
                     <div>
-                      <h3 className="text-xl font-black text-white uppercase tracking-tight">Rewards Matrix</h3>
-                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">PAXG / Market Convergence</label>
+                      <h3 className="text-xl font-black text-gray-900 dark:text-white uppercase tracking-tight">Rewards Matrix</h3>
+                      <label className="text-[10px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-widest">PAXG / Market Convergence</label>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
@@ -3066,35 +3131,35 @@ export default function PlatformDashboard() {
                 </div>
 
                 <div className="space-y-4">
-                  <div className="p-4 bg-black/40 rounded-2xl border border-white/5">
+                  <div className="p-4 bg-gray-50 dark:bg-black/40 rounded-2xl border border-gray-100 dark:border-white/5">
                     <div className="flex items-center justify-between mb-2">
-                      <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">PAXG Market Ratio</p>
+                      <p className="text-[10px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-widest">PAXG Market Ratio</p>
                       <span className="text-[10px] font-bold text-amber-500">+{((goldBtcRatio / 0.05) * 100 - 100).toFixed(2)}% Performance</span>
                     </div>
-                    <p className="text-3xl font-black text-white tracking-tighter">{goldBtcRatio.toFixed(5)}</p>
+                    <p className="text-3xl font-black text-gray-900 dark:text-white tracking-tighter">{goldBtcRatio.toFixed(5)}</p>
                     <div className="mt-2 flex items-center gap-2">
-                      <div className="flex-1 h-1 bg-white/5 rounded-full overflow-hidden">
+                      <div className="flex-1 h-1 bg-gray-100 dark:bg-white/5 rounded-full overflow-hidden">
                         <div className="h-full bg-amber-500" style={{ width: '65%' }} />
                       </div>
-                      <span className="text-[8px] font-black text-slate-400 uppercase">Reserves: 82%</span>
+                      <span className="text-[8px] font-black text-gray-400 dark:text-slate-400 uppercase">Reserves: 82%</span>
                     </div>
                   </div>
 
                   <div className="grid grid-cols-2 gap-4">
-                    <div className="p-3 bg-black/20 rounded-xl border border-white/5">
-                      <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest mb-1">Matrix Ratio</p>
+                    <div className="p-3 bg-gray-50 dark:bg-black/20 rounded-xl border border-gray-100 dark:border-white/5">
+                      <p className="text-[8px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-widest mb-1">Matrix Ratio</p>
                       <p className="text-sm font-black text-amber-500">{goldBtcRatio.toFixed(6)}</p>
                     </div>
-                    <div className="p-3 bg-black/20 rounded-xl border border-white/5">
-                      <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest mb-1">Bitcoin (BTC)</p>
-                      <p className="text-sm font-black text-white">${Number(btcPriceValue || 0).toLocaleString()}</p>
+                    <div className="p-3 bg-gray-50 dark:bg-black/20 rounded-xl border border-gray-100 dark:border-white/5">
+                      <p className="text-[8px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-widest mb-1">Bitcoin (BTC)</p>
+                      <p className="text-sm font-black text-gray-900 dark:text-white">${Number(btcPriceValue || 0).toLocaleString()}</p>
                     </div>
                   </div>
                 </div>
               </div>
             </div>
 
-            <div className="lg:col-span-1 bg-slate-900 border border-yellow-500/20 rounded-[2.5rem] p-8 shadow-2xl relative overflow-hidden group">
+            <div className="lg:col-span-1 bg-white dark:bg-slate-900 border border-yellow-500/20 rounded-[2.5rem] p-8 shadow-2xl relative overflow-hidden group">
               <div className="absolute top-0 right-0 p-8 opacity-5 group-hover:opacity-10 transition-opacity">
                 <Globe className="w-40 h-40 text-yellow-500 -rotate-12" />
               </div>
@@ -3106,8 +3171,8 @@ export default function PlatformDashboard() {
                       <Zap className="w-6 h-6 text-yellow-500" />
                     </div>
                     <div>
-                      <h3 className="text-xl font-black text-white uppercase tracking-tight">Global Treasury</h3>
-                      <p className="text-slate-500 text-[10px] font-bold flex items-center gap-1">
+                      <h3 className="text-xl font-black text-gray-900 dark:text-white uppercase tracking-tight">Global Treasury</h3>
+                      <p className="text-gray-400 dark:text-slate-500 text-[10px] font-bold flex items-center gap-1">
                         <span className="uppercase tracking-widest">Master Asset Control</span>
                         <span className="text-yellow-500/50">•</span>
                         <span className="text-yellow-500">edwinmuoha@gmail.com</span>
@@ -3117,7 +3182,7 @@ export default function PlatformDashboard() {
                   <button 
                     onClick={checkTreasuryBalance}
                     disabled={isCheckingTreasury}
-                    className="p-3 bg-white/5 hover:bg-white/10 rounded-xl transition-all disabled:opacity-50"
+                    className="p-3 bg-gray-50 dark:bg-white/5 hover:bg-gray-100 dark:hover:bg-white/10 rounded-xl transition-all disabled:opacity-50"
                   >
                     <RefreshCw className={cn("w-5 h-5 text-yellow-500", isCheckingTreasury && "animate-spin")} />
                   </button>
@@ -3125,13 +3190,13 @@ export default function PlatformDashboard() {
 
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
                   {treasuryBalances.length > 0 ? treasuryBalances.map((b, i) => (
-                    <div key={`balance-${b.asset}-${i}`} className="bg-black/40 p-4 rounded-2xl border border-white/5">
-                      <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">{b.asset}</p>
-                      <p className="text-lg font-black text-white truncate">{parseFloat(b.free).toFixed(4)}</p>
+                    <div key={`balance-${b.asset}-${i}`} className="bg-gray-50 dark:bg-black/40 p-4 rounded-2xl border border-gray-100 dark:border-white/5">
+                      <p className="text-[10px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-widest mb-1">{b.asset}</p>
+                      <p className="text-lg font-black text-gray-900 dark:text-white truncate">{parseFloat(b.free).toFixed(4)}</p>
                     </div>
                   )) : (
-                    <div className="col-span-full py-8 text-center bg-black/20 rounded-2xl border border-dashed border-white/10">
-                      <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">No Active Balances Found</p>
+                    <div className="col-span-full py-8 text-center bg-gray-50 dark:bg-black/20 rounded-2xl border border-dashed border-gray-200 dark:border-white/10">
+                      <p className="text-[10px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-widest">No Active Balances Found</p>
                       <button onClick={checkTreasuryBalance} className="mt-2 text-yellow-500 font-black text-xs hover:underline">Connect Node</button>
                     </div>
                   )}
@@ -3330,9 +3395,9 @@ export default function PlatformDashboard() {
                 </div>
                 <div className="text-[10px] font-black text-emerald-600 uppercase tracking-[0.2em]">Real-Time Inflow</div>
               </div>
-              <p className="text-xs font-black text-gray-400 uppercase tracking-widest mb-1">Total Revenue Inflow</p>
+              <p className="text-xs font-black text-gray-400 uppercase tracking-widest mb-1">Total Revenue Inflow into the whole app</p>
               <h3 className="text-3xl font-black text-gray-900 dark:text-white tracking-tighter">USDT {Number(stats.platformRevenue || 0).toLocaleString()}</h3>
-              <p className="text-[10px] text-gray-400 mt-3 font-bold uppercase italic">Ads, Payments, Subscriptions & Others</p>
+              <p className="text-[10px] text-gray-400 mt-3 font-bold uppercase italic">Ads, Payments, Subscriptions, Education Fees & Others</p>
             </motion.div>
 
             {/* Revenue Outflow */}
@@ -3353,7 +3418,7 @@ export default function PlatformDashboard() {
               </div>
               <p className="text-xs font-black text-gray-400 uppercase tracking-widest mb-1">Total Revenue Outflow</p>
               <h3 className="text-3xl font-black text-gray-900 dark:text-white tracking-tighter">USDT {Number(stats.totalOutflow || 0).toLocaleString()}</h3>
-              <p className="text-[10px] text-gray-400 mt-3 font-bold uppercase italic">Includes 80% User Share & Payouts</p>
+              <p className="text-[10px] text-gray-400 mt-3 font-bold uppercase italic">Includes 80%, 50%, 30% and 10% User Shares</p>
             </motion.div>
 
             {/* Revenue Net (Developer Revenue) */}
@@ -3373,7 +3438,7 @@ export default function PlatformDashboard() {
                 </div>
                 <div className="px-2 py-1 bg-white/20 rounded-full text-[9px] font-black uppercase tracking-widest border border-white/20">Verified</div>
               </div>
-              <p className="text-xs font-black text-indigo-100 uppercase tracking-widest mb-1">Total Revenue Net</p>
+              <p className="text-xs font-black text-indigo-100 uppercase tracking-widest mb-1">Total Revenue Net for the app</p>
               <h3 className="text-4xl font-black tracking-tighter mb-1">USDT {Number(stats.platformShare || 0).toLocaleString()}</h3>
               <p className="text-[10px] text-indigo-100/60 font-bold uppercase tracking-widest mt-3 italic leading-tight">Developer Revenue (Platform Payout Reserve)</p>
             </motion.div>

@@ -18,12 +18,21 @@ export const mpesa_handler = {
 export const unified_participant_payout = () => {};
 export const rewards_policy = () => {};
 export const equal_distribution_protocol = () => {};
-export const merchant_of_record_tax_remittance = () => {
+export const merchant_of_record_tax_remittance = (amount: number = 0, currency: string = 'USDT') => {
+  // Enhanced "full functionality" simulated logic
+  const taxRate = 0.05; // Global simulated average
+  const taxAmount = amount * taxRate;
+  
+  console.log(`[MoR Engine] Auto-remitting tax: ${taxAmount.toFixed(4)} ${currency} for transaction value ${amount} ${currency}`);
+  
   return {
     status: 'ACTIVE',
     mode: 'AUTOMATIC_ON_TRANSACTION',
     compliance: 'GLOBAL_VAT_GST_WHT',
-    lastCheck: new Date().toISOString()
+    remittedAmount: taxAmount,
+    currency: currency,
+    lastCheck: new Date().toISOString(),
+    filingPeriod: new Date().toLocaleString('default', { month: 'long', year: 'numeric' })
   };
 };
 
@@ -46,31 +55,38 @@ export const email_system_reporter = () => {};
 export const pulse_feeds_auto_sync = () => {};
 export const daily_twin_sync = () => {};
 export const midnight_settlement_engine = () => {};
-export const revenue_distribution_engine = (amount: number, source: 'ad' | 'education' | 'community' | 'events' | 'dating' | 'active_time' = 'active_time', isPaid: boolean = false) => {
+export const revenue_distribution_engine = (amount: number, source: 'ad' | 'education' | 'community' | 'events' | 'dating' | 'active_time' | 'payment' | 'subscription' | 'withdraw_fee' = 'active_time', membershipLevel: string = 'diamond', isPaid: boolean = false) => {
   let platformShare = 0;
   let userShare = 0;
 
-  if (source === 'ad' || isPaid) {
-    // Platform revenue: 100% platform, not shared
+  // Platform-only revenue sources (100% platform)
+  const isPlatformOnly = source === 'ad' || source === 'payment' || source === 'subscription' || source === 'withdraw_fee' || isPaid;
+
+  if (isPlatformOnly) {
     platformShare = amount;
     userShare = 0;
   } else {
-    // User activity (education, active_time, community, dating, events): 60% user, 40% platform
-    platformShare = amount * 0.40;
-    userShare = amount * 0.60;
+    // Shared revenue sources (education, community, events, dating, active_time)
+    // Tiered split logic:
+    // Gold: 80% user / 20% platform
+    // Silver: 50% user / 50% platform
+    // Bronze: 30% user / 70% platform
+    // Diamond (Foundation): 10% user / 90% platform
+    
+    let userPercentage = 0.10; // Default Diamond
+    if (membershipLevel === 'gold') userPercentage = 0.80;
+    else if (membershipLevel === 'silver') userPercentage = 0.50;
+    else if (membershipLevel === 'bronze') userPercentage = 0.30;
+
+    userShare = amount * userPercentage;
+    platformShare = amount * (1 - userPercentage);
   }
 
   return { platformShare, userShare };
 };
 
-export const calculateRevenueDistribution = (amount: number, source: 'ad' | 'education' | 'community' | 'events' | 'dating' | 'active_time' = 'active_time', isPaid: boolean = false) => {
-  if (source === 'ad' || isPaid) {
-    // Platform revenue: 100% platform, not shared
-    return { platform: amount, user: 0 };
-  } else {
-    // User activity (education, active_time, community, dating, events): 60% user, 40% platform
-    return { platform: amount * 0.40, user: amount * 0.60 };
-  }
+export const calculateRevenueDistribution = (amount: number, source: 'ad' | 'education' | 'community' | 'events' | 'dating' | 'active_time' | 'payment' | 'subscription' | 'withdraw_fee' = 'active_time', membershipLevel: string = 'diamond', isPaid: boolean = false) => {
+  return revenue_distribution_engine(amount, source, membershipLevel, isPaid);
 };
 export const auto_updater = () => {};
 export const resource_governor = () => {};

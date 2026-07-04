@@ -9,7 +9,8 @@ import {
   Coins,
   History,
   Clock,
-  Shield
+  Shield,
+  RefreshCw
 } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import { useRevenue } from "../contexts/RevenueContext";
@@ -142,7 +143,47 @@ export default function Withdraw() {
   const developerBalance = Math.max(Number(platformStats?.platformShare || 0), platformTotals.net);
   const currentAvailableBalance = selectedRole === 'developer' ? developerBalance : userBalance;
 
-  const executePayoutRequest = async (tokenValue: string, amountToWithdraw: number) => {
+  const [isDevVerified, setIsDevVerified] = useState(false);
+  const [isVerifyingDev, setIsVerifyingDev] = useState(false);
+
+  const handleDevSecondLogin = async () => {
+    setIsVerifyingDev(true);
+    try {
+      const { GoogleAuthProvider, reauthenticateWithPopup } = await import("firebase/auth");
+      const { auth } = await import("../lib/firebase");
+      
+      if (!auth.currentUser) throw new Error("Session expired.");
+      
+      const provider = new GoogleAuthProvider();
+      provider.setCustomParameters({ prompt: 'select_account' });
+      
+      await reauthenticateWithPopup(auth.currentUser, provider);
+      setIsDevVerified(true);
+      setSelectedRole('developer');
+    } catch (err: any) {
+      console.error("Dev verification failed:", err);
+      setWithdrawError("Developer verification failed. Access denied.");
+    } finally {
+      setIsVerifyingDev(false);
+    }
+  };
+
+  const handleRoleToggle = () => {
+    if (selectedRole === 'user') {
+      if (isDeveloperAccount && !isDevVerified) {
+        // Trigger second login before switching
+        handleDevSecondLogin();
+      } else if (isDeveloperAccount && isDevVerified) {
+        setSelectedRole('developer');
+      } else {
+        setSelectedRole('developer'); // Will show access denied screen
+      }
+    } else {
+      setSelectedRole('user');
+    }
+  };
+
+  const executePayoutRequest = async (tokenValue: string, amountToWithdraw: number, uid?: string) => {
     setWithdrawLoading(true);
     setWithdrawError("");
     
@@ -150,6 +191,7 @@ export default function Withdraw() {
     await syncActiveTimeRewards();
     
     const withdrawVal = amountToWithdraw;
+    const finalUid = uid || currentUser?.uid;
 
     try {
       const endpoint = selectedRole === 'developer' ? "/api/payout/platform" : "/api/payout/crypto";
@@ -157,7 +199,7 @@ export default function Withdraw() {
       const payload: any = {
         amount: withdrawVal,
         network: cryptoNetwork,
-        userId: currentUser?.uid,
+        userId: finalUid,
         scaToken: tokenValue,
       };
 
@@ -166,7 +208,7 @@ export default function Withdraw() {
         payload.asset = "USDT";
         payload.address = walletAddress;
         payload.recipient = "Developer Wallet";
-        payload.userId = currentUser?.uid;
+        payload.userId = finalUid;
         payload.email = currentUser?.email;
       } else {
         payload.walletAddress = walletAddress;
@@ -253,13 +295,17 @@ export default function Withdraw() {
       const { GoogleAuthProvider, reauthenticateWithPopup } = await import("firebase/auth");
       const { auth } = await import("../lib/firebase");
       
-      if (!auth.currentUser) throw new Error("Authentication session expired.");
+      const currentUid = auth.currentUser?.uid || currentUser?.uid;
+      if (!currentUid) throw new Error("Authentication session expired. Please refresh and try again.");
+
+      console.log(`[Withdraw] Starting verification for UID: ${currentUid}`);
 
       const provider = new GoogleAuthProvider();
       provider.setCustomParameters({ prompt: 'select_account' });
 
       try {
-        await reauthenticateWithPopup(auth.currentUser, provider);
+        await reauthenticateWithPopup(auth.currentUser!, provider);
+        console.log("[Withdraw] Re-authentication successful.");
       } catch (reauthErr: any) {
         console.error("Google Verification Failed:", reauthErr);
         if (reauthErr.code === 'auth/wrong-password') {
@@ -271,7 +317,7 @@ export default function Withdraw() {
         }
       }
 
-      await executePayoutRequest("GOOGLE_VERIFIED", numAmount);
+      await executePayoutRequest("GOOGLE_VERIFIED", numAmount, currentUid);
     } catch (err: any) {
       setWithdrawError(err.message || "Security verification failed.");
       setWithdrawLoading(false);
@@ -279,35 +325,35 @@ export default function Withdraw() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white flex flex-col justify-between py-12 px-4 sm:px-6 lg:px-8 font-sans">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-white flex flex-col justify-between py-12 px-4 sm:px-6 lg:px-8 font-sans transition-colors duration-300">
       
-      <div className="absolute top-0 left-0 w-full h-[500px] bg-gradient-to-b from-purple-950/20 to-transparent pointer-events-none z-0" />
+      <div className="absolute top-0 left-0 w-full h-[500px] bg-gradient-to-b from-purple-500/10 dark:from-purple-950/20 to-transparent pointer-events-none z-0" />
 
       <div className="w-full max-w-xl mx-auto z-10">
         
         <div className="text-center mb-8">
-          <div className="inline-flex items-center gap-2 bg-purple-900/40 px-4 py-1.5 rounded-full border border-purple-500/20 text-xs font-mono tracking-widest text-purple-400 mb-3 uppercase leading-none">
+          <div className="inline-flex items-center gap-2 bg-purple-100 dark:bg-purple-900/40 px-4 py-1.5 rounded-full border border-purple-200 dark:border-purple-500/20 text-xs font-mono tracking-widest text-purple-600 dark:text-purple-400 mb-3 uppercase leading-none">
             <Coins className="w-3.5 h-3.5 animate-pulse" /> Pulse Feeds Sec-V3
           </div>
-          <h1 className="text-4xl font-extrabold tracking-tight text-white mb-2">
+          <h1 className="text-4xl font-extrabold tracking-tight text-slate-900 dark:text-white mb-2">
             Withdraw Funds
           </h1>
-          <p className="text-sm text-slate-400 max-w-md mx-auto leading-relaxed">
+          <p className="text-sm text-slate-500 dark:text-slate-400 max-w-md mx-auto leading-relaxed">
             Verify your identity with Google Login to authorize outbound transactions.
           </p>
         </div>
 
-        <div className="bg-slate-900/80 backdrop-blur-md rounded-3xl border border-slate-800 p-8 shadow-2xl space-y-6">
-          <div className="flex items-center justify-between border-b border-slate-800 pb-5">
+        <div className="bg-white dark:bg-slate-900/80 backdrop-blur-md rounded-3xl border border-slate-200 dark:border-slate-800 p-8 shadow-2xl space-y-6">
+          <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-5">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-emerald-950/40 border border-emerald-500/20 rounded-xl flex items-center justify-center text-emerald-400">
+              <div className="w-10 h-10 bg-emerald-100 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-500/20 rounded-xl flex items-center justify-center text-emerald-600 dark:text-emerald-400">
                 <Unlock className="w-5 h-5" />
               </div>
               <div>
-                <h3 className="text-sm font-black uppercase tracking-wider leading-none text-white">
+                <h3 className="text-sm font-black uppercase tracking-wider leading-none text-slate-900 dark:text-white">
                   {selectedRole === 'developer' ? "💻 Platform Vault unlocked" : "👤 User Payouts Unlocked"}
                 </h3>
-                <span className="text-[10px] text-emerald-400 font-bold uppercase tracking-widest mt-1 inline-block">
+                <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold uppercase tracking-widest mt-1 inline-block">
                   ● Authenticated Session
                 </span>
               </div>
@@ -317,9 +363,11 @@ export default function Withdraw() {
               <div className="flex gap-2">
                 <button
                   type="button"
-                  onClick={() => setSelectedRole(selectedRole === 'user' ? 'developer' : 'user')}
-                  className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all"
+                  onClick={handleRoleToggle}
+                  disabled={isVerifyingDev}
+                  className="px-3 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all flex items-center gap-2"
                 >
+                  {isVerifyingDev && <RefreshCw className="w-3 h-3 animate-spin" />}
                   Switch to {selectedRole === 'user' ? 'Developer' : 'User'}
                 </button>
               </div>
@@ -328,55 +376,55 @@ export default function Withdraw() {
 
           {selectedRole === 'developer' && !isDeveloperAccount ? (
             <div className="text-center py-10">
-              <div className="w-16 h-16 bg-red-950/30 border border-red-500/20 rounded-full flex items-center justify-center text-red-500 mx-auto mb-4">
+              <div className="w-16 h-16 bg-red-100 dark:bg-red-950/30 border border-red-200 dark:border-red-500/20 rounded-full flex items-center justify-center text-red-500 mx-auto mb-4">
                 <XCircle className="w-8 h-8" />
               </div>
-              <h3 className="text-lg font-black text-red-200 uppercase tracking-wide">Developer Access Denied</h3>
-              <p className="text-xs text-slate-400 mt-2 px-6">
+              <h3 className="text-lg font-black text-red-700 dark:text-red-200 uppercase tracking-wide">Developer Access Denied</h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-2 px-6">
                 Only certified developer profiles can initiate withdrawals from the global platform treasury.
               </p>
               <button
                 onClick={() => setSelectedRole('user')}
-                className="mt-6 px-6 py-2.5 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl text-xs uppercase tracking-wider transition-all"
+                className="mt-6 px-6 py-2.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-900 dark:text-white font-bold rounded-xl text-xs uppercase tracking-wider transition-all"
               >
                 Return to User Portal
               </button>
             </div>
           ) : (
             <>
-              <div className="bg-slate-950/60 rounded-2xl border border-slate-800/80 p-6 relative overflow-hidden">
+              <div className="bg-slate-100/50 dark:bg-slate-950/60 rounded-2xl border border-slate-200 dark:border-slate-800/80 p-6 relative overflow-hidden">
                 <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none">
                   <Clock className="w-32 h-32" />
                 </div>
 
                 <div className="flex justify-between items-start mb-4">
                   <div className="space-y-1">
-                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 block">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500 block">
                       Active User Timer
                     </span>
-                    <div className="text-xl font-mono font-black text-emerald-400 animate-pulse">
+                    <div className="text-xl font-mono font-black text-emerald-600 dark:text-emerald-400 animate-pulse">
                       {formatTime(totalActiveTime)}
                     </div>
                   </div>
                   <div className="text-right">
-                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 block">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500 block">
                       Membership Status
                     </span>
-                    <div className="text-[10px] font-black text-indigo-400 bg-indigo-500/10 px-2 py-1 rounded border border-indigo-500/20 uppercase tracking-widest mt-1">
+                    <div className="text-[10px] font-black text-indigo-600 dark:text-indigo-400 bg-indigo-500/10 px-2 py-1 rounded border border-indigo-200 dark:border-indigo-500/20 uppercase tracking-widest mt-1">
                       {userData?.membershipLevel || 'Bronze'} Tier
                     </div>
                   </div>
                 </div>
 
-                <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">
-                  {selectedRole === 'developer' ? 'Amount Available for Withdraw (Treasury)' : 'Current Balance (USDT)' }
+                <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                  {selectedRole === 'developer' ? 'Total Revenue Net for the app (Developer Revenue)' : 'Current Balance (USDT)' }
                 </span>
                 
                 <div className="flex items-baseline gap-2 mt-1">
-                  <h2 className="text-4xl font-extrabold text-white tracking-tight">
+                  <h2 className="text-4xl font-extrabold text-slate-900 dark:text-white tracking-tight">
                     {Number(currentAvailableBalance || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 6 })}
                   </h2>
-                  <span className="text-sm font-black text-purple-400 font-mono">USDT</span>
+                  <span className="text-sm font-black text-purple-600 dark:text-purple-400 font-mono">USDT</span>
                 </div>
 
                 <div className="mt-4 pt-4 border-t border-slate-900 grid grid-cols-2 gap-4">
@@ -416,8 +464,8 @@ export default function Withdraw() {
                     <p className="text-[11px] font-bold text-rose-300">USDT {platformTotals.outflow.toLocaleString()}</p>
                   </div>
                   <div className="space-y-1 text-right">
-                    <p className="text-[8px] font-black uppercase tracking-widest text-emerald-400">Net (Developer)</p>
-                    <p className="text-[11px] font-bold text-emerald-400">USDT {platformTotals.net.toLocaleString()}</p>
+                    <p className="text-[8px] font-black uppercase tracking-widest text-emerald-600 dark:text-emerald-400">Total Revenue Net for the app (Developer Revenue)</p>
+                    <p className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400">USDT {platformTotals.net.toLocaleString()}</p>
                   </div>
                 </div>
               )}
