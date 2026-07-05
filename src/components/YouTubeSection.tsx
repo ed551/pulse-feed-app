@@ -16,11 +16,11 @@ interface MediaItem {
 
 const MEDIA_ITEMS: MediaItem[] = [
   // Curated spotlights
-  { id: 'spot-1', title: 'Community Feed', category: 'Spotlight', type: 'playlist', url: 'https://www.youtube.com/embed/videoseries?list=PLJKQ-nLJ-21LgxH8A-7YMFZuZhUnLuGHY', description: 'Curated community playlist updates and event recordings.' },
-  { id: 'spot-2', title: 'World News Hub', category: 'Spotlight', type: 'video', url: 'https://www.youtube.com/embed/5qap5aO4i9A', description: 'Global highlights and community spotlight.' },
-  { id: 'spot-3', title: 'Global Tech Insights', category: 'Spotlight', type: 'video', url: 'https://www.youtube.com/embed/qgehB8b_K1U', description: 'Latest breakthroughs in technology, AI and science.' },
-  { id: 'spot-4', title: 'Master Classes', category: 'Spotlight', type: 'playlist', url: 'https://www.youtube.com/embed/videoseries?list=PLJKQ-nLJ-21LgxH8A-7YMFZuZhUnLuGHY', description: 'Educational deep-dives and development bootcamps.' },
-  { id: 'spot-5', title: 'AI Innovations', category: 'Spotlight', type: 'video', url: 'https://www.youtube.com/embed/dQw4w9WgXcQ', description: 'Exploring the future of artificial intelligence.' },
+  { id: 'spot-1', title: 'Community Feed', category: 'Spotlight', type: 'playlist', url: 'https://www.youtube.com/embed/videoseries?list=PLJKQ-nLJ-21LgxH8A-7YMFZuZhUnLuGHY&rel=0', description: 'Curated community playlist updates and event recordings.' },
+  { id: 'spot-2', title: 'Global News Hub', category: 'Spotlight', type: 'video', url: 'https://www.youtube.com/embed/Vv8Wshf9LFE?rel=0', description: 'Global highlights and community spotlight.' },
+  { id: 'spot-3', title: 'Tech Innovation', category: 'Spotlight', type: 'video', url: 'https://www.youtube.com/embed/8-S0vS97_5k?rel=0', description: 'Latest breakthroughs in technology and science.' },
+  { id: 'spot-4', title: 'Community Lessons', category: 'Spotlight', type: 'playlist', url: 'https://www.youtube.com/embed/videoseries?list=PLJKQ-nLJ-21LgxH8A-7YMFZuZhUnLuGHY&rel=0', description: 'Educational deep-dives and development bootcamps.' },
+  { id: 'spot-5', title: 'Pulse Innovations', category: 'Spotlight', type: 'video', url: 'https://www.youtube.com/embed/D0unALPaEBY?rel=0', description: 'Exploring the future of artificial intelligence.' },
 
   // Live TV Channels
   {
@@ -475,7 +475,6 @@ export default function YouTubeSection() {
                       frameBorder="0"
                       allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
                       allowFullScreen
-                      referrerPolicy="no-referrer"
                       className="relative z-10 w-full h-full"
                     ></iframe>
                   </motion.div>
