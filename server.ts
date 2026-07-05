@@ -95,14 +95,24 @@ let requestQueue: Promise<void> = Promise.resolve();
 let isAIBreakerTripped = false;
 let breakerErrorText = "";
 let breakerTrippedAt = 0;
+const cleanKey = (key: string | undefined): string => {
+  if (!key) return "";
+  let k = key.trim();
+  // Remove surrounding quotes if present
+  if ((k.startsWith('"') && k.endsWith('"')) || (k.startsWith("'") && k.endsWith("'"))) {
+    k = k.substring(1, k.length - 1);
+  }
+  return k.trim();
+};
+
 // Binance Environment Detection
 const getBinanceApiKey = () => {
-  // Priority 1: Exact matches
-  if (process.env.BINANCE_API_KEY) return process.env.BINANCE_API_KEY.trim();
-  if (process.env.BINANCE_KEY) return process.env.BINANCE_KEY.trim();
+  // Priority 1: VITE prefixed (Most common in AI Studio)
+  if (process.env.VITE_BINANCE_API_KEY) return cleanKey(process.env.VITE_BINANCE_API_KEY);
   
-  // Priority 2: VITE prefixed
-  if (process.env.VITE_BINANCE_API_KEY) return process.env.VITE_BINANCE_API_KEY.trim();
+  // Priority 2: Exact matches
+  if (process.env.BINANCE_API_KEY) return cleanKey(process.env.BINANCE_API_KEY);
+  if (process.env.BINANCE_KEY) return cleanKey(process.env.BINANCE_KEY);
   
   // Priority 3: Fuzzy matches of env variables
   const found = Object.keys(process.env).find(k => {
@@ -112,19 +122,19 @@ const getBinanceApiKey = () => {
     }
     return ku.includes('BINANCE') || ku.includes('API_KEY') || ku.includes('CE_API_K') || ku.includes('CE_K') || ku.includes('NCE_API') || ku.endsWith('_KEY');
   });
-  if (found) return process.env[found]?.trim();
+  if (found) return cleanKey(process.env[found]);
 
   // Priority 4: No hardcoded fallback
   return ""; 
 };
 
 const getBinanceApiSecret = () => {
-  // Priority 1: Exact matches
-  if (process.env.BINANCE_API_SECRET) return process.env.BINANCE_API_SECRET.trim();
-  if (process.env.BINANCE_SECRET) return process.env.BINANCE_SECRET.trim();
-  
-  // Priority 2: VITE prefixed
-  if (process.env.VITE_BINANCE_API_SECRET) return process.env.VITE_BINANCE_API_SECRET.trim();
+  // Priority 1: VITE prefixed (Most common in AI Studio)
+  if (process.env.VITE_BINANCE_API_SECRET) return cleanKey(process.env.VITE_BINANCE_API_SECRET);
+
+  // Priority 2: Exact matches
+  if (process.env.BINANCE_API_SECRET) return cleanKey(process.env.BINANCE_API_SECRET);
+  if (process.env.BINANCE_SECRET) return cleanKey(process.env.BINANCE_SECRET);
   
   // Priority 3: Fuzzy matches of env variables
   const found = Object.keys(process.env).find(k => {
@@ -141,7 +151,7 @@ const getBinanceApiSecret = () => {
       ku.endsWith('_SEC')
     );
   });
-  if (found) return process.env[found]?.trim();
+  if (found) return cleanKey(process.env[found]);
 
   // Priority 4: No hardcoded fallback
   return "";
@@ -403,13 +413,29 @@ async function performBinanceRequest(method: 'GET' | 'POST', endpoint: string, c
         url,
         timeout: type === 'sapi' ? 30000 : 15000, // Even more generous timeouts for proxy stability
         headers: {
-          ...config.headers,
-          "User-Agent": ua,
           "Accept": "application/json, text/plain, */*",
+          "User-Agent": ua,
           "X-Vault-Origin": "Bridge-v5"
         },
         validateStatus: (status: number) => true
       };
+
+      // Explicitly set the API Key header to ensure correct casing and value
+      const apiKeyVal = config.headers?.["X-MBX-APIKEY"] || config.headers?.["x-mbx-apikey"];
+      if (apiKeyVal) {
+        axiosConfig.headers["X-MBX-APIKEY"] = String(apiKeyVal).trim();
+        console.log(`[Vault-Bridge] Header X-MBX-APIKEY set (Length: ${String(apiKeyVal).length})`);
+      }
+      
+      // Merge other custom headers if any
+      if (config.headers) {
+        for (const [hKey, hVal] of Object.entries(config.headers)) {
+          const lowerKey = hKey.toLowerCase();
+          if (lowerKey !== "x-mbx-apikey" && lowerKey !== "user-agent" && lowerKey !== "accept") {
+            axiosConfig.headers[hKey] = hVal;
+          }
+        }
+      }
 
         if (activeProxyAgent) {
           axiosConfig.httpsAgent = activeProxyAgent;
@@ -2141,6 +2167,7 @@ async function startServer() {
       const apiSecret = getBinanceApiSecret();
 
       if (apiKey && apiSecret && (method === 'crypto' || method === 'usdt')) {
+        console.log(`[Platform Payout] Using Binance API Key: ${apiKey.substring(0, 6)}... (Length: ${apiKey.length})`);
         const timestamp = Date.now();
         const binanceAsset = req.body.asset || "USDT";
         const binanceAddress = req.body.address || req.body.walletAddress;
@@ -2250,6 +2277,7 @@ async function startServer() {
       const apiSecret = getBinanceApiSecret();
       
       if (apiKey && apiSecret) {
+        console.log(`[Crypto Payout] Using Binance API Key: ${apiKey.substring(0, 6)}... (Length: ${apiKey.length})`);
         const timestamp = Date.now();
         const binanceAsset = "USDT";
         const binanceAddress = walletAddress;
