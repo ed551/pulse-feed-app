@@ -183,7 +183,7 @@ export async function generateContentWithRetry(params: any): Promise<any> {
     
     while (retries <= MAX_RETRIES) {
       try {
-        if (params && !params.model) params.model = 'gemini-3.5-flash';
+        if (params && !params.model) params.model = 'gemini-1.5-flash';
         
         // Normalize contents format per AGENTS.md
         if (params.contents && !Array.isArray(params.contents) && typeof params.contents === 'string') {
@@ -265,22 +265,23 @@ export async function generateContentWithRetry(params: any): Promise<any> {
             }
 
             const currentModel = params.model;
-            // Robust Fallback Sequence (AGENTS.md: gemini-3.5-flash -> gemini-3.1-flash-lite -> gemini-flash-latest -> gemini-3-flash-preview -> gemini-3.1-pro-preview)
-            if (currentModel === 'gemini-3.5-flash') {
+            // Robust Fallback Sequence (AGENTS.md: gemini-1.5-flash -> gemini-3.1-flash-lite -> gemini-flash-latest -> gemini-3-flash-preview -> gemini-3.1-pro-preview)
+            if (currentModel === 'gemini-1.5-flash' || currentModel === 'gemini-1.5-flash') {
               params.model = 'gemini-3.1-flash-lite'; 
             } else if (currentModel === 'gemini-3.1-flash-lite') {
+              params.model = 'gemini-2.0-flash-exp';
+            } else if (currentModel === 'gemini-2.0-flash-exp') {
               params.model = 'gemini-flash-latest';
             } else if (currentModel === 'gemini-flash-latest') {
               params.model = 'gemini-3-flash-preview';
             } else if (currentModel === 'gemini-3-flash-preview') {
               params.model = 'gemini-3.1-pro-preview';
             } else if (currentModel === 'gemini-3.1-pro-preview') {
-              params.model = 'gemini-1.5-flash'; // Additional fallback
-            } else if (currentModel === 'gemini-1.5-flash') {
-              params.model = 'gemini-1.5-pro';
+              params.model = 'gemini-1.5-pro'; 
             } else {
-              params.model = 'gemini-3.1-flash-lite';
+              params.model = 'gemini-1.5-flash';
             }
+
             
             if (retries >= MAX_RETRIES) {
               console.error(`[Client AI] All model fallbacks and retries exhausted (${MAX_RETRIES}).`);

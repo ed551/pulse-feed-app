@@ -135,7 +135,7 @@ export default function SelfHealing() {
       Format: DIAGNOSIS: [explanation] | HEAL: [suggestion]`;
 
       const response = await generateContentWithRetry({
-        model: "gemini-3.5-flash",
+        model: "gemini-1.5-flash",
         contents: prompt
       });
 

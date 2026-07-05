@@ -72,7 +72,7 @@ export default function NewsFeed() {
       - Categories: 'Science', 'Environment', 'Co-op', 'Edu', 'Tech', 'Social'.`;
 
       const response = await generateContentWithRetry({
-        model: "gemini-3.5-flash", // Using 3.5 for better following of JSON instructions when using tools
+        model: "gemini-1.5-flash", // Using 3.5 for better following of JSON instructions when using tools
         contents: [{ role: "user", parts: [{ text: prompt }] }],
         tools: [{ googleSearch: {} }],
         toolConfig: { includeServerSideToolInvocations: true },
@@ -85,7 +85,7 @@ export default function NewsFeed() {
       if (!textResponse || textResponse.trim().length < 5) {
         console.warn("Empty AI response. Retrying with non-grounded fallback...");
         const retryResponse = await generateContentWithRetry({
-          model: "gemini-3.5-flash", 
+          model: "gemini-1.5-flash", 
           contents: [{ role: "user", parts: [{ text: prompt + " \nONLY OUTPUT JSON ARRAY." }] }],
           generationConfig: { responseMimeType: "application/json" }
         });

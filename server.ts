@@ -102,7 +102,8 @@ const cleanKey = (key: string | undefined): string => {
   if ((k.startsWith('"') && k.endsWith('"')) || (k.startsWith("'") && k.endsWith("'"))) {
     k = k.substring(1, k.length - 1);
   }
-  return k.trim();
+  // Remove ALL whitespace and non-printable characters for API keys
+  return k.replace(/[\s\u200B-\u200D\uFEFF]/g, '');
 };
 
 // Binance Environment Detection
@@ -407,35 +408,34 @@ async function performBinanceRequest(method: 'GET' | 'POST', endpoint: string, c
     try {
       console.debug(`[Vault-Bridge] ${method} ${url} | UA: ${ua.substring(0, 15)}...${activeProxyAgent ? ' (via proxy Agent)' : ' (directFallback)'}`);
       
+      const finalHeaders: Record<string, string> = {
+        "Accept": "application/json, text/plain, */*",
+        "User-Agent": ua,
+        "X-Vault-Origin": "Bridge-v7"
+      };
+
+      // Merge config.headers and normalize case
+      if (config.headers) {
+        for (const [key, value] of Object.entries(config.headers)) {
+          const lowerKey = key.toLowerCase();
+          if (lowerKey === 'x-mbx-apikey' || lowerKey === 'content-type') {
+            // Priority headers - ensure correct casing for Binance
+            const correctKey = lowerKey === 'x-mbx-apikey' ? 'X-MBX-APIKEY' : 'Content-Type';
+            finalHeaders[correctKey] = String(value).replace(/[\s\u200B-\u200D\uFEFF]/g, '');
+          } else if (lowerKey !== 'user-agent' && lowerKey !== 'accept' && lowerKey !== 'x-vault-origin') {
+            finalHeaders[key] = String(value);
+          }
+        }
+      }
+
       const axiosConfig: any = {
         ...config,
         method,
         url,
-        timeout: type === 'sapi' ? 30000 : 15000, // Even more generous timeouts for proxy stability
-        headers: {
-          "Accept": "application/json, text/plain, */*",
-          "User-Agent": ua,
-          "X-Vault-Origin": "Bridge-v5"
-        },
+        timeout: type === 'sapi' ? 30000 : 15000, 
+        headers: finalHeaders,
         validateStatus: (status: number) => true
       };
-
-      // Explicitly set the API Key header to ensure correct casing and value
-      const apiKeyVal = config.headers?.["X-MBX-APIKEY"] || config.headers?.["x-mbx-apikey"];
-      if (apiKeyVal) {
-        axiosConfig.headers["X-MBX-APIKEY"] = String(apiKeyVal).trim();
-        console.log(`[Vault-Bridge] Header X-MBX-APIKEY set (Length: ${String(apiKeyVal).length})`);
-      }
-      
-      // Merge other custom headers if any
-      if (config.headers) {
-        for (const [hKey, hVal] of Object.entries(config.headers)) {
-          const lowerKey = hKey.toLowerCase();
-          if (lowerKey !== "x-mbx-apikey" && lowerKey !== "user-agent" && lowerKey !== "accept") {
-            axiosConfig.headers[hKey] = hVal;
-          }
-        }
-      }
 
         if (activeProxyAgent) {
           axiosConfig.httpsAgent = activeProxyAgent;
@@ -861,7 +861,7 @@ async function generateContentWithRetry(params: any): Promise<any> {
   try {
     let retries = 0;
     while (retries <= MAX_RETRIES) {
-      if (params && !params.model) params.model = 'gemini-3.5-flash';
+      if (params && !params.model) params.model = 'gemini-1.5-flash';
       
       // Normalize contents format per AGENTS.md
       if (params.contents && !Array.isArray(params.contents) && typeof params.contents === 'string') {
@@ -988,12 +988,10 @@ async function generateContentWithRetry(params: any): Promise<any> {
           await delay(waitTime);
 
           const currentModel = params.model;
-          // Robust Fallback Sequence (AGENTS.md: gemini-3.5-flash -> gemini-3.1-flash-lite -> gemini-flash-latest -> gemini-3-flash-preview -> gemini-3.1-pro-preview)
-          if (currentModel === 'gemini-3.5-flash') {
+          // Robust Fallback Sequence (AGENTS.md: gemini-1.5-flash -> gemini-3.1-flash-lite -> gemini-flash-latest -> gemini-3-flash-preview -> gemini-3.1-pro-preview)
+          if (currentModel === 'gemini-1.5-flash' || currentModel === 'gemini-1.5-flash') {
             params.model = 'gemini-3.1-flash-lite'; 
           } else if (currentModel === 'gemini-3.1-flash-lite') {
-            params.model = 'gemini-1.5-flash';
-          } else if (currentModel === 'gemini-1.5-flash') {
             params.model = 'gemini-2.0-flash-exp';
           } else if (currentModel === 'gemini-2.0-flash-exp') {
             params.model = 'gemini-flash-latest';
@@ -1006,6 +1004,7 @@ async function generateContentWithRetry(params: any): Promise<any> {
           } else {
             params.model = 'gemini-1.5-flash';
           }
+
         
           if (retries >= MAX_RETRIES) {
             console.error(`[Server AI] All model fallbacks and retries exhausted (${MAX_RETRIES}). Tripping breaker.`);
@@ -2189,7 +2188,10 @@ async function startServer() {
 
         const binanceResp = await performBinanceRequest('POST', `/v1/capital/withdraw/apply`, {
           data: query,
-          headers: { "X-MBX-APIKEY": apiKey }
+          headers: { 
+            "X-MBX-APIKEY": apiKey,
+            "Content-Type": "application/x-www-form-urlencoded"
+          }
         }, 'sapi');
 
         if (binanceResp.status === 200 && binanceResp.data.id) {
@@ -2291,7 +2293,10 @@ async function startServer() {
 
         const binanceResp = await performBinanceRequest('POST', `/v1/capital/withdraw/apply`, {
           data: query,
-          headers: { "X-MBX-APIKEY": apiKey }
+          headers: { 
+            "X-MBX-APIKEY": apiKey,
+            "Content-Type": "application/x-www-form-urlencoded"
+          }
         }, 'sapi');
 
         if (binanceResp.status === 200 && binanceResp.data.id) {
@@ -2775,7 +2780,7 @@ async function startServer() {
       Style: Academic, professional, yet inspiring. Use a "Pulse Feeds" editorial tone.`;
 
       const response = await generateContentWithRetry({
-        model: 'gemini-3.5-flash',
+        model: 'gemini-1.5-flash',
         systemInstruction: "You are an elite academic curator for Pulse Feeds Education Hub. You specialize in deep research and clear communication of complex enterprise and technology topics.",
         contents: [{ role: "user", parts: [{ text: prompt }] }],
         generationConfig: { responseMimeType: "application/json" }
@@ -4400,7 +4405,7 @@ async function syncEducationCourses() {
 
     // Prefer a lighter model for automated daily tasks to reduce 429 risk
     const response = await generateContentWithRetry({
-      model: "gemini-3.5-flash", 
+      model: "gemini-1.5-flash", 
       contents: [{ role: "user", parts: [{ text: prompt }] }],
       tools: [{ googleSearch: {} }] 
     });
@@ -4659,7 +4664,7 @@ async function performRobustEducationSync() {
       
       // 3. AI Risk Analysis
       const aiResponse = await generateContentWithRetry({
-        model: "gemini-3.5-flash",
+        model: "gemini-1.5-flash",
         contents: [{
           role: "user",
           parts: [{ text: `
@@ -5930,7 +5935,7 @@ async function performRobustEducationSync() {
       Do not include any other commentary, markdown wrappers or external formatting.`;
 
       const response = await generateContentWithRetry({
-        model: 'gemini-3.5-flash',
+        model: 'gemini-1.5-flash',
         systemInstruction: "You are an elite enterprise B2B data strategist. You speak in a highly technical, professional, corporate tone. You excel at drawing macro insights while stringently protecting individual user identities.",
         contents: [{ role: "user", parts: [{ text: prompt }] }],
         generationConfig: { responseMimeType: "application/json" }

@@ -182,7 +182,7 @@ export const RevenueProvider: React.FC<{ children: React.ReactNode }> = ({ child
       Otherwise return [STABLE].`;
 
       const result = await generateContentWithRetry({
-        model: "gemini-3.5-flash",
+        model: "gemini-1.5-flash",
         contents: [{ role: "user", parts: [{ text: prompt }] }]
       });
 

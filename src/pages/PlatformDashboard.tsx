@@ -604,7 +604,7 @@ export default function PlatformDashboard() {
       `;
 
       const response = await generateContentWithRetry({
-        model: "gemini-3.5-flash",
+        model: "gemini-1.5-flash",
         contents: [{ role: "user", parts: [{ text: `You are the Pulse Master Search Engine. Analyze this platform health data and provide a concise, 3-paragraph executive summary. 
         IMPORTANT: Use your Master Search Engine capabilities to research current global trends in decentralised social platforms, community rewards (Web3/Points), and online education startup growth for May 2026. 
         Compare Pulse Feeds performance to these global benchmarks.
