@@ -265,19 +265,13 @@ export async function generateContentWithRetry(params: any): Promise<any> {
             }
 
             const currentModel = params.model;
-            // Robust Fallback Sequence (AGENTS.md: gemini-1.5-flash -> gemini-3.1-flash-lite -> gemini-flash-latest -> gemini-3-flash-preview -> gemini-3.1-pro-preview)
-            if (currentModel === 'gemini-1.5-flash' || currentModel === 'gemini-1.5-flash') {
-              params.model = 'gemini-3.1-flash-lite'; 
-            } else if (currentModel === 'gemini-3.1-flash-lite') {
-              params.model = 'gemini-2.0-flash-exp';
-            } else if (currentModel === 'gemini-2.0-flash-exp') {
-              params.model = 'gemini-flash-latest';
-            } else if (currentModel === 'gemini-flash-latest') {
-              params.model = 'gemini-3-flash-preview';
-            } else if (currentModel === 'gemini-3-flash-preview') {
-              params.model = 'gemini-3.1-pro-preview';
-            } else if (currentModel === 'gemini-3.1-pro-preview') {
-              params.model = 'gemini-1.5-pro'; 
+            // Robust Fallback Sequence (Sync with server.ts and AGENTS.md)
+            if (currentModel === 'gemini-1.5-flash' || currentModel === 'gemini-3.5-flash') {
+              params.model = 'gemini-1.5-flash-8b'; 
+            } else if (currentModel === 'gemini-1.5-flash-8b') {
+              params.model = 'gemini-2.0-flash';
+            } else if (currentModel === 'gemini-2.0-flash') {
+              params.model = 'gemini-1.5-pro';
             } else {
               params.model = 'gemini-1.5-flash';
             }

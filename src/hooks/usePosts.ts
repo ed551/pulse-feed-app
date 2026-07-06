@@ -71,20 +71,40 @@ export function usePosts() {
       return;
     }
 
-    const q = query(collection(db, 'posts'));
+    const q = query(collection(db, 'posts'), orderBy('createdAt', 'desc'));
     console.log("Setting up onSnapshot for posts");
+    
+    // Load from cache first for immediate UI response
+    const cachedPosts = localStorage.getItem('cache_posts');
+    if (cachedPosts) {
+      try {
+        setPosts(JSON.parse(cachedPosts));
+        setLoading(false);
+      } catch (e) {
+        console.warn("Failed to parse cached posts", e);
+      }
+    }
+
     const unsubscribe = onSnapshot(q, (snapshot) => {
       console.log("onSnapshot received snapshot, docs count:", snapshot.docs.length);
       const postsData = snapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
       })) as Post[];
+      
       setPosts(postsData);
+      localStorage.setItem('cache_posts', JSON.stringify(postsData));
       setLoading(false);
-    }, (error) => {
+    }, (error: any) => {
       console.error("Firestore error:", error);
-      setLoading(false);
-      handleFirestoreError(error, OperationType.LIST, 'posts');
+      
+      // If we already have cached posts, just stop loading
+      if (localStorage.getItem('cache_posts')) {
+        setLoading(false);
+      } else {
+        setLoading(false);
+        handleFirestoreError(error, OperationType.LIST, 'posts');
+      }
     });
 
     return () => {

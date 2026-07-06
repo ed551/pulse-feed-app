@@ -257,6 +257,10 @@ export default function Community() {
 
     // Fetch Community Reports
     const reportsQuery = query(collection(db, 'community_reports'), orderBy('timestamp', 'desc'), limit(10));
+    const cachedReports = localStorage.getItem('cache_reports');
+    if (cachedReports) {
+      try { setReports(JSON.parse(cachedReports)); } catch (e) {}
+    }
     const unsubscribeReports = onSnapshot(reportsQuery, (snapshot) => {
       const fetchedReports = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as CommunityReport[];
       if (fetchedReports.length === 0 && db) {
@@ -266,11 +270,16 @@ export default function Community() {
         ]);
       } else {
         setReports(fetchedReports);
+        localStorage.setItem('cache_reports', JSON.stringify(fetchedReports));
       }
-    });
+    }, (error) => handleFirestoreError(error, OperationType.LIST, 'community_reports'));
 
     // Fetch Community Polls
     const pollsQuery = query(collection(db, 'community_polls'), orderBy('endsAt', 'desc'), limit(5));
+    const cachedPolls = localStorage.getItem('cache_polls');
+    if (cachedPolls) {
+      try { setPolls(JSON.parse(cachedPolls)); } catch (e) {}
+    }
     const unsubscribePolls = onSnapshot(pollsQuery, (snapshot) => {
       const fetchedPolls = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as CommunityPoll[];
       if (fetchedPolls.length === 0 && db) {
@@ -287,8 +296,9 @@ export default function Community() {
         ]);
       } else {
         setPolls(fetchedPolls);
+        localStorage.setItem('cache_polls', JSON.stringify(fetchedPolls));
       }
-    });
+    }, (error) => handleFirestoreError(error, OperationType.LIST, 'community_polls'));
 
     // Generate AI Community Summary
     const generateSummary = async () => {
@@ -311,6 +321,10 @@ export default function Community() {
 
     // Fetch Community Events
     const eventsQuery = query(collection(db, 'events'), orderBy('date', 'asc'), limit(5));
+    const cachedEvents = localStorage.getItem('cache_events');
+    if (cachedEvents) {
+      try { setEvents(JSON.parse(cachedEvents)); } catch (e) {}
+    }
     const unsubscribeEvents = onSnapshot(eventsQuery, (snapshot) => {
       const fetchedEvents = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as CommunityEvent[];
       if (fetchedEvents.length === 0 && db) {
@@ -320,8 +334,9 @@ export default function Community() {
         ]);
       } else {
         setEvents(fetchedEvents);
+        localStorage.setItem('cache_events', JSON.stringify(fetchedEvents));
       }
-    });
+    }, (error) => handleFirestoreError(error, OperationType.LIST, 'events'));
 
     // Sample Skills
     setSkills([

@@ -95,9 +95,37 @@ export interface FirestoreErrorInfo {
   }
 }
 
+export let isQuotaExceeded = false;
+const quotaListeners = new Set<(status: boolean) => void>();
+
+export function onQuotaStatusChange(callback: (status: boolean) => void) {
+  quotaListeners.add(callback);
+  callback(isQuotaExceeded);
+  return () => { quotaListeners.delete(callback); };
+}
+
 export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
   const errorMessage = error instanceof Error ? error.message : String(error);
+  const errorCode = (error as any)?.code;
   
+  const isQuotaError = 
+    errorMessage.toLowerCase().includes('quota') || 
+    errorMessage.toLowerCase().includes('resource-exhausted') ||
+    errorCode === 'resource-exhausted';
+
+  if (isQuotaError) {
+    if (!isQuotaExceeded) {
+      isQuotaExceeded = true;
+      quotaListeners.forEach(l => l(true));
+      console.warn('⚠️ Firestore Quota Exceeded. The app will continue using cached data where available.');
+    }
+    // Don't throw for quota errors in LIST/GET operations to prevent app crashes
+    if (operationType === OperationType.LIST || operationType === OperationType.GET) {
+      console.debug(`[Firestore] Suppressing throw for quota error during ${operationType} on ${path}`);
+      return; 
+    }
+  }
+
   // If it's an Auth error, we want to know, but maybe not hide it in a Firestore JSON if we can help it
   if (errorMessage.includes('auth/unauthorized-domain')) {
     const domain = window.location.hostname;

@@ -109,11 +109,23 @@ const cleanKey = (key: string | undefined): string => {
 // Binance Environment Detection
 const getBinanceApiKey = () => {
   // Priority 1: VITE prefixed (Most common in AI Studio)
-  if (process.env.VITE_BINANCE_API_KEY) return cleanKey(process.env.VITE_BINANCE_API_KEY);
+  if (process.env.VITE_BINANCE_API_KEY) {
+      const key = cleanKey(process.env.VITE_BINANCE_API_KEY);
+      console.log(`[Binance] Found VITE_BINANCE_API_KEY: ${!!key}`);
+      return key;
+  }
   
   // Priority 2: Exact matches
-  if (process.env.BINANCE_API_KEY) return cleanKey(process.env.BINANCE_API_KEY);
-  if (process.env.BINANCE_KEY) return cleanKey(process.env.BINANCE_KEY);
+  if (process.env.BINANCE_API_KEY) {
+      const key = cleanKey(process.env.BINANCE_API_KEY);
+      console.log(`[Binance] Found BINANCE_API_KEY: ${!!key}`);
+      return key;
+  }
+  if (process.env.BINANCE_KEY) {
+      const key = cleanKey(process.env.BINANCE_KEY);
+      console.log(`[Binance] Found BINANCE_KEY: ${!!key}`);
+      return key;
+  }
   
   // Priority 3: Fuzzy matches of env variables
   const found = Object.keys(process.env).find(k => {
@@ -123,9 +135,14 @@ const getBinanceApiKey = () => {
     }
     return ku.includes('BINANCE') || ku.includes('API_KEY') || ku.includes('CE_API_K') || ku.includes('CE_K') || ku.includes('NCE_API') || ku.endsWith('_KEY');
   });
-  if (found) return cleanKey(process.env[found]);
+  if (found) {
+      const key = cleanKey(process.env[found]);
+      console.log(`[Binance] Found via fuzzy search ${found}: ${!!key}`);
+      return key;
+  }
 
   // Priority 4: No hardcoded fallback
+  console.log(`[Binance] No API Key found.`);
   return ""; 
 };
 
@@ -427,6 +444,12 @@ async function performBinanceRequest(method: 'GET' | 'POST', endpoint: string, c
           }
         }
       }
+
+      const maskedHeaders = { ...finalHeaders };
+      if (maskedHeaders['X-MBX-APIKEY']) {
+        maskedHeaders['X-MBX-APIKEY'] = `${maskedHeaders['X-MBX-APIKEY'].substring(0, 4)}...`;
+      }
+      console.log(`[Vault-Bridge] Request: ${method} ${url} | Headers: ${JSON.stringify(maskedHeaders)} | X-MBX-APIKEY present: ${!!finalHeaders['X-MBX-APIKEY']}`);
 
       const axiosConfig: any = {
         ...config,
@@ -988,19 +1011,13 @@ async function generateContentWithRetry(params: any): Promise<any> {
           await delay(waitTime);
 
           const currentModel = params.model;
-          // Robust Fallback Sequence (AGENTS.md: gemini-1.5-flash -> gemini-3.1-flash-lite -> gemini-flash-latest -> gemini-3-flash-preview -> gemini-3.1-pro-preview)
-          if (currentModel === 'gemini-1.5-flash' || currentModel === 'gemini-1.5-flash') {
-            params.model = 'gemini-3.1-flash-lite'; 
-          } else if (currentModel === 'gemini-3.1-flash-lite') {
-            params.model = 'gemini-2.0-flash-exp';
-          } else if (currentModel === 'gemini-2.0-flash-exp') {
-            params.model = 'gemini-flash-latest';
-          } else if (currentModel === 'gemini-flash-latest') {
-            params.model = 'gemini-3-flash-preview';
-          } else if (currentModel === 'gemini-3-flash-preview') {
-            params.model = 'gemini-3.1-pro-preview';
-          } else if (currentModel === 'gemini-3.1-pro-preview') {
-            params.model = 'gemini-1.5-pro'; 
+          // Robust Fallback Sequence (Sync with AGENTS.md requirements)
+          if (currentModel === 'gemini-1.5-flash' || currentModel === 'gemini-3.5-flash') {
+            params.model = 'gemini-1.5-flash-8b'; 
+          } else if (currentModel === 'gemini-1.5-flash-8b') {
+            params.model = 'gemini-2.0-flash';
+          } else if (currentModel === 'gemini-2.0-flash') {
+            params.model = 'gemini-1.5-pro';
           } else {
             params.model = 'gemini-1.5-flash';
           }
