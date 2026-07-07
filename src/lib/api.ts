@@ -92,12 +92,11 @@ export const getApiUrl = (path: string): string => {
       console.warn(`[API Proxy] Warning: Site is HTTPS but API is HTTP. Browser may block requests to ${finalUrl}`);
     }
     
-    console.log(`[API Proxy Fallback] Routing ${path} -> ${finalUrl}`);
-    return finalUrl;
- a41c839 (fix: updated fallback base URL to secure localtunnel)
-  }
-  
-  return cleanPath;
+      console.log(`[API Proxy Fallback] Routing ${path} -> ${finalUrl}`);
+  return finalUrl;
+}
+
+return cleanPath;
 };
 
 /**
