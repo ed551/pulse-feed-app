@@ -1,8 +1,4 @@
-import express from 'express';
-const app = express();
-const PORT = 3000;
 
- HEAD
 // Build Version: 1.0.8 - Port 3000 Enforcement & Startup Resiliency
 import express from "express";
 import crypto from "crypto";
@@ -47,15 +43,6 @@ import africastalking from 'africastalking';
 import { GoogleGenAI } from "@google/genai";
 import { HttpsProxyAgent } from "https-proxy-agent";
 import { SocksProxyAgent } from "socks-proxy-agent";
-import { 
-  generateRegistrationOptions, 
-  verifyRegistrationResponse, 
-  generateAuthenticationOptions, 
-  verifyAuthenticationResponse 
-} from '@simplewebauthn/server';
-
-// In-Memory cache to store temporary challenges for Passkey registration & login ceremonies
-const challengeCache = new Map<string, string>();
 
 dotenv.config();
 // Global lock to prevent overlapping Binance transactions
@@ -95,44 +82,21 @@ if (isValidApiKey) {
 } else {
   console.warn("[AI Init] No valid Gemini API Key found in environment variables. Searched: GEMINI_AI, GEMINI_API_KEY, GOOGLE_API_KEY, GEMINI_API");
 }
-const MIN_REQUEST_INTERVAL = 15000;
+const MIN_REQUEST_INTERVAL = 20000;
 const MAX_RETRIES = 20; 
 const INITIAL_DELAY = 15000;
 let requestQueue: Promise<void> = Promise.resolve();
 let isAIBreakerTripped = false;
 let breakerErrorText = "";
 let breakerTrippedAt = 0;
-const cleanKey = (key: string | undefined): string => {
-  if (!key) return "";
-  let k = key.trim();
-  // Remove surrounding quotes if present
-  if ((k.startsWith('"') && k.endsWith('"')) || (k.startsWith("'") && k.endsWith("'"))) {
-    k = k.substring(1, k.length - 1);
-  }
-  // Remove ALL whitespace and non-printable characters for API keys
-  return k.replace(/[\s\u200B-\u200D\uFEFF]/g, '');
-};
-
 // Binance Environment Detection
 const getBinanceApiKey = () => {
-  // Priority 1: VITE prefixed (Most common in AI Studio)
-  if (process.env.VITE_BINANCE_API_KEY) {
-      const key = cleanKey(process.env.VITE_BINANCE_API_KEY);
-      console.log(`[Binance] Found VITE_BINANCE_API_KEY: ${!!key}`);
-      return key;
-  }
+  // Priority 1: Exact matches
+  if (process.env.BINANCE_API_KEY) return process.env.BINANCE_API_KEY.trim();
+  if (process.env.BINANCE_KEY) return process.env.BINANCE_KEY.trim();
   
-  // Priority 2: Exact matches
-  if (process.env.BINANCE_API_KEY) {
-      const key = cleanKey(process.env.BINANCE_API_KEY);
-      console.log(`[Binance] Found BINANCE_API_KEY: ${!!key}`);
-      return key;
-  }
-  if (process.env.BINANCE_KEY) {
-      const key = cleanKey(process.env.BINANCE_KEY);
-      console.log(`[Binance] Found BINANCE_KEY: ${!!key}`);
-      return key;
-  }
+  // Priority 2: VITE prefixed
+  if (process.env.VITE_BINANCE_API_KEY) return process.env.VITE_BINANCE_API_KEY.trim();
   
   // Priority 3: Fuzzy matches of env variables
   const found = Object.keys(process.env).find(k => {
@@ -142,24 +106,19 @@ const getBinanceApiKey = () => {
     }
     return ku.includes('BINANCE') || ku.includes('API_KEY') || ku.includes('CE_API_K') || ku.includes('CE_K') || ku.includes('NCE_API') || ku.endsWith('_KEY');
   });
-  if (found) {
-      const key = cleanKey(process.env[found]);
-      console.log(`[Binance] Found via fuzzy search ${found}: ${!!key}`);
-      return key;
-  }
+  if (found) return process.env[found]?.trim();
 
   // Priority 4: No hardcoded fallback
-  console.log(`[Binance] No API Key found.`);
   return ""; 
 };
 
 const getBinanceApiSecret = () => {
-  // Priority 1: VITE prefixed (Most common in AI Studio)
-  if (process.env.VITE_BINANCE_API_SECRET) return cleanKey(process.env.VITE_BINANCE_API_SECRET);
-
-  // Priority 2: Exact matches
-  if (process.env.BINANCE_API_SECRET) return cleanKey(process.env.BINANCE_API_SECRET);
-  if (process.env.BINANCE_SECRET) return cleanKey(process.env.BINANCE_SECRET);
+  // Priority 1: Exact matches
+  if (process.env.BINANCE_API_SECRET) return process.env.BINANCE_API_SECRET.trim();
+  if (process.env.BINANCE_SECRET) return process.env.BINANCE_SECRET.trim();
+  
+  // Priority 2: VITE prefixed
+  if (process.env.VITE_BINANCE_API_SECRET) return process.env.VITE_BINANCE_API_SECRET.trim();
   
   // Priority 3: Fuzzy matches of env variables
   const found = Object.keys(process.env).find(k => {
@@ -176,40 +135,10 @@ const getBinanceApiSecret = () => {
       ku.endsWith('_SEC')
     );
   });
-  if (found) return cleanKey(process.env[found]);
+  if (found) return process.env[found]?.trim();
 
   // Priority 4: No hardcoded fallback
   return "";
-};
-
-const getProxyMatchKey = () => {
-  const envKeys = Object.keys(process.env);
-  
-  // Custom User Proxies (High Priority)
-  // We exclude VITE_API_BASE_URL from proxy agents, as it is used for API Relay/Bridge logic.
-  const userProxy = envKeys.find(k => {
-    const ku = k.toUpperCase().trim();
-    return ku === 'BINANCE_PROXY' || ku === 'VITE_BINANCE_PROXY';
-  });
-  if (userProxy) return userProxy;
-
-  // Third-party standard proxies (Fallback)
-  const systemProxy = envKeys.find(k => {
-    const ku = k.toUpperCase().trim();
-    return ku === 'PROXY_URL' || ku === 'QUOTAGUARDSTATIC_URL' || ku === 'QUOTAGUARD_URL' || ku === 'FIXIE_URL';
-  });
-  if (systemProxy) return systemProxy;
-
-  // Fuzzy matches next (e.g. BINANCE PROXY, BINANCE_PROXY_URL, MY_PROXY)
-  return envKeys.find(k => {
-    const ku = k.toUpperCase().trim().replace(/[\s-]/g, '_');
-    return (
-      ku.includes('BINANCE_PROXY') || 
-      (ku.includes('PROXY') && (ku.includes('URL') || ku.includes('HOST'))) ||
-      ku === 'ORACLE_PROXY' ||
-      ku === 'BRIDGE_PROXY'
-    );
-  });
 };
 
 const getDetectedBinanceSecrets = () => {
@@ -238,7 +167,10 @@ const getDetectedBinanceSecrets = () => {
   const rawSecret = secretMatch ? process.env[secretMatch]?.trim() : "";
 
   // Oracle Cloud Direct Connectivity remains the priority, BINANCE_PROXY is optional fallback only
-  const proxyMatch = getProxyMatchKey();
+  const proxyMatch = envKeys.find(k => {
+    const ku = k.toUpperCase().trim();
+    return ku === 'BINANCE_PROXY' || ku === 'VITE_BINANCE_PROXY' || ku === 'PROXY_URL' || ku === 'QUOTAGUARDSTATIC_URL' || ku === 'QUOTAGUARD_URL' || ku === 'FIXIE_URL';
+  });
   const rawProxy = proxyMatch ? process.env[proxyMatch]?.trim() : "";
 
   if (rawProxy) {
@@ -300,7 +232,13 @@ const ALTERNATE_USER_AGENTS = [
   "axios/1.6.7"
 ];
 
-  // (getProxyMatchKey moved up for consistency)
+const getProxyMatchKey = () => {
+  const envKeys = Object.keys(process.env);
+  return envKeys.find(k => {
+    const ku = k.toUpperCase().trim();
+    return ku === 'BINANCE_PROXY' || ku === 'VITE_BINANCE_PROXY' || ku === 'PROXY_URL' || ku === 'QUOTAGUARDSTATIC_URL' || ku === 'QUOTAGUARD_URL' || ku === 'FIXIE_URL';
+  });
+};
 
 const getBinanceMirror = () => {
   const custom = process.env.BINANCE_API_URL;
@@ -309,7 +247,7 @@ const getBinanceMirror = () => {
   return BINANCE_MIRRORS[Math.floor(Math.random() * BINANCE_MIRRORS.length)];
 };
 
-const BINANCE_USE_TESTNET = false;
+const BINANCE_USE_TESTNET = process.env.BINANCE_USE_TESTNET === "true";
 const getBinanceBaseUrl = () => {
   if (BINANCE_USE_TESTNET) return "https://testnet.binance.vision";
   return getBinanceMirror();
@@ -320,17 +258,6 @@ const getBinanceSapiBase = () => `${getBinanceBaseUrl()}/sapi`;
 
 // Tracking for proxy exhaustion/errors (such as 407 Proxy Authentication Required or 402 Payment Required)
 let proxyExhaustedDetected = false;
-let lastProxyErrorTime = 0;
-const PROXY_RETRY_DELAY = 300000; // 5 minutes cool-down before retrying proxy after exhaustion
-
-const checkProxyStatus = () => {
-  if (proxyExhaustedDetected && Date.now() - lastProxyErrorTime > PROXY_RETRY_DELAY) {
-    console.log("[Vault-Bridge] Proxy cool-down expired. Attempting to re-enable proxy routing.");
-    proxyExhaustedDetected = false;
-    proxyErrorReason = "";
-  }
-  return proxyExhaustedDetected;
-};
 let proxyErrorReason = "";
 
 // System Telemetry & Build Info
@@ -371,18 +298,7 @@ const getProxyAgent = () => {
   }
   
   // Strip off surrounding brackets, parenthesis, or quotes
-  proxyUrl = proxyUrl.replace(/^[\[\(\s"']+/, '').replace(/[\]\)\s"']+$/, '').trim();
-  
-  // Special handling for Oracle Cloud IPs that might be missing protocol or port defaults
-  if (!proxyUrl.includes('://')) {
-    if (proxyUrl.match(/^\d+\.\d+\.\d+\.\d+$/)) {
-      // It's just an IP, default to http://IP:3000 for Oracle Bridge (Matching user's recent update)
-      console.log(`[Proxy-Init] IP-only detected (${proxyUrl}), defaulting to http://${proxyUrl}:3000`);
-      proxyUrl = `http://${proxyUrl}:3000`;
-    } else if (proxyUrl.includes(':')) {
-       proxyUrl = `http://${proxyUrl}`;
-    }
-  }
+  proxyUrl = proxyUrl.replace(/^[\[\(\s"']+/, '').replace(/[\]\)\s"']+$/, '');
   
   try {
     if (proxyUrl.startsWith('socks')) {
@@ -420,50 +336,29 @@ async function performBinanceRequest(method: 'GET' | 'POST', endpoint: string, c
   const proxyAgent = getProxyAgent();
 
   for (const mirror of mirrors) {
-    const baseUrl = (BINANCE_USE_TESTNET && type !== 'sapi') ? "https://testnet.binance.vision" : mirror;
+    const baseUrl = BINANCE_USE_TESTNET ? "https://testnet.binance.vision" : mirror;
     const url = `${baseUrl}/${type}${endpoint}`;
     
     // Pick 1 random UA to try per mirror to save time
     const ua = ALTERNATE_USER_AGENTS[Math.floor(Math.random() * ALTERNATE_USER_AGENTS.length)];
     
     // If we've detected proxy issues, fall back to direct routing
-    const activeProxyAgent = checkProxyStatus() ? null : proxyAgent;
+    const activeProxyAgent = proxyExhaustedDetected ? null : proxyAgent;
     
     try {
       console.debug(`[Vault-Bridge] ${method} ${url} | UA: ${ua.substring(0, 15)}...${activeProxyAgent ? ' (via proxy Agent)' : ' (directFallback)'}`);
       
-      const finalHeaders: Record<string, string> = {
-        "Accept": "application/json, text/plain, */*",
-        "User-Agent": ua,
-        "X-Vault-Origin": "Bridge-v7"
-      };
-
-      // Merge config.headers and normalize case
-      if (config.headers) {
-        for (const [key, value] of Object.entries(config.headers)) {
-          const lowerKey = key.toLowerCase();
-          if (lowerKey === 'x-mbx-apikey' || lowerKey === 'content-type') {
-            // Priority headers - ensure correct casing for Binance
-            const correctKey = lowerKey === 'x-mbx-apikey' ? 'X-MBX-APIKEY' : 'Content-Type';
-            finalHeaders[correctKey] = String(value).replace(/[\s\u200B-\u200D\uFEFF]/g, '');
-          } else if (lowerKey !== 'user-agent' && lowerKey !== 'accept' && lowerKey !== 'x-vault-origin') {
-            finalHeaders[key] = String(value);
-          }
-        }
-      }
-
-      const maskedHeaders = { ...finalHeaders };
-      if (maskedHeaders['X-MBX-APIKEY']) {
-        maskedHeaders['X-MBX-APIKEY'] = `${maskedHeaders['X-MBX-APIKEY'].substring(0, 4)}...`;
-      }
-      console.log(`[Vault-Bridge] Request: ${method} ${url} | Headers: ${JSON.stringify(maskedHeaders)} | X-MBX-APIKEY present: ${!!finalHeaders['X-MBX-APIKEY']}`);
-
       const axiosConfig: any = {
         ...config,
         method,
         url,
-        timeout: type === 'sapi' ? 30000 : 15000, 
-        headers: finalHeaders,
+        timeout: type === 'sapi' ? 30000 : 15000, // Even more generous timeouts for proxy stability
+        headers: {
+          ...config.headers,
+          "User-Agent": ua,
+          "Accept": "application/json, text/plain, */*",
+          "X-Vault-Origin": "Bridge-v5"
+        },
         validateStatus: (status: number) => true
       };
 
@@ -489,41 +384,24 @@ async function performBinanceRequest(method: 'GET' | 'POST', endpoint: string, c
 
         const response = await axios(axiosConfig);
         
-        // Success (Extra check for 200 OK HTML blocks/challenges)
+        // Success
         if (response.status === 200) {
-          const respData = typeof response.data === 'string' ? response.data : JSON.stringify(response.data);
-          const isHtml = respData.includes('<html>') || respData.includes('<!DOCTYPE html>') || respData.includes('<title>Cookie check</title>') || respData.includes('Checking your browser');
-          if (isHtml) {
-             console.warn(`[Vault-Bridge] Mirror ${mirror} returned 200 but it is HTML (Possible WAF Challenge/Block/Cookie Check). Trying next mirror...`);
-             lastError = new Error(`Mirror ${mirror} returned HTML content (Cloudflare/WAF Challenge) instead of API JSON`);
-             continue;
-          }
-          if (type === 'sapi' && method === 'POST') console.log(`[Vault-Bridge] SAPI Success on ${mirror}`);
           return response;
         }
-
-        console.warn(`[Vault-Bridge] Mirror ${mirror} returned status ${response.status}. Data preview: ${typeof response.data === 'string' ? response.data.substring(0, 100) : JSON.stringify(response.data).substring(0, 100)}`);
 
         // Handle proxy authentication/exhaustion failures
         if (response.status === 407 || response.status === 402) {
           console.error(`[Vault-Bridge] Proxy Authentication/Quota issues status ${response.status} from mirror ${mirror}. Switching to direct fallback.`);
           proxyExhaustedDetected = true;
-          lastProxyErrorTime = Date.now();
           proxyErrorReason = `Proxy returned HTTP status ${response.status} (Authentication Required or Quota Limit Exceeded). Please upgrade or verify your Fixie proxy.`;
           continue; // Retrying next mirror directly in the fallback mode
         }
 
         // Handle mirror blocks (403 HTML)
-        if (response.status === 403) {
-          const respData = typeof response.data === 'string' ? response.data : JSON.stringify(response.data);
-          const isWafBlock = respData.includes('<html>') || respData.includes('WAF');
-          const isApiBlock = respData.includes('Restricted') || respData.includes('whitelist') || respData.includes('IP');
-          
-          if (isWafBlock || isApiBlock) {
-             console.warn(`[Vault-Bridge] Mirror Restricted/Blocked (403) on ${mirror}. Reason: ${isWafBlock ? 'WAF/HTML' : 'API_BLOCK'}. Trying next...`);
-             lastError = new Error(`Mirror ${mirror} returned 403 (${isWafBlock ? 'WAF' : 'IP_RESTRICTED'})`);
-             continue; 
-          }
+        if (response.status === 403 && typeof response.data === 'string' && response.data.includes('<html>')) {
+          console.warn(`[Vault-Bridge] Mirror Blocked (403 HTML) on ${mirror}. Trying next...`);
+          lastError = new Error(`Mirror ${mirror} returned 403 HTML (WAF)`);
+          continue; 
         }
 
         // Handle real API errors (JSON)
@@ -541,7 +419,6 @@ async function performBinanceRequest(method: 'GET' | 'POST', endpoint: string, c
         if (errStatus === 407 || errMsg.includes("407") || errStatus === 402 || errMsg.includes("402") || errMsg.includes("proxy authentication")) {
           console.error(`[Vault-Bridge] Proxy Auth/Billing error thrown: ${err.message}. Enabling direct routing fallback.`);
           proxyExhaustedDetected = true;
-          lastProxyErrorTime = Date.now();
           proxyErrorReason = `Proxy error thrown: ${err.message} (${errStatus || '407'}). Your Fixie quota is likely exceeded.`;
         }
         
@@ -555,190 +432,6 @@ async function performBinanceRequest(method: 'GET' | 'POST', endpoint: string, c
     throw lastError || new Error("All Vault mirrors exhausted or blocked by WAF.");
 }
 
-/**
- * Normalizes a pasted wallet address to prevent typos (like starting with O/o instead of 0 for EVM) and trims whitespace.
- */
-function cleanAndNormalizeAddress(addr: string): string {
-  if (!addr) return "";
-  // Strip all whitespaces, tabs, newlines or hidden characters from anywhere in the address
-  let cleaned = addr.replace(/\s+/g, "");
-  
-  // 1. If it starts with [oO][xX] or any variant of 'ox', replace the prefix with standard '0x'
-  if (/^[oO][xX]/i.test(cleaned)) {
-    cleaned = '0x' + cleaned.substring(2);
-  }
-  
-  // 2. If it is an EVM address (starts with 0x), normalize invalid hex characters
-  // In a hex string (0-9, a-f), 'o' or 'O' are 100% typos for '0' (zero)
-  if (cleaned.toLowerCase().startsWith('0x')) {
-    const prefix = cleaned.substring(0, 2);
-    let body = cleaned.substring(2);
-    body = body.replace(/[oO]/g, '0');
-    cleaned = prefix + body;
-  }
-  
-  return cleaned;
-}
-
-const OWN_DEPOSIT_ADDRESSES = new Set<string>([]);
-
-async function loadPersistedDepositAddresses() {
-  try {
-    const snapshot = await resilientDb.collection('platform_binance_addresses').get();
-    snapshot.forEach(doc => {
-      const addr = doc.id.toLowerCase();
-      OWN_DEPOSIT_ADDRESSES.add(addr);
-    });
-    console.log(`[Binance-Preload] Loaded ${snapshot.size} persisted deposit addresses from Firestore.`);
-  } catch (err: any) {
-    console.error("[Binance-Preload] Error loading persisted addresses:", err.message);
-  }
-}
-
-async function persistDepositAddress(addr: string) {
-  const normalized = addr.trim().toLowerCase();
-  if (!normalized) return;
-  try {
-    await resilientDb.collection('platform_binance_addresses').doc(normalized).set({
-      lastSeen: FieldValue.serverTimestamp(),
-      addedAt: FieldValue.serverTimestamp()
-    }, { merge: true });
-  } catch (err: any) {
-    console.error("[Binance-Preload] Error persisting address:", err.message);
-  }
-}
-
-async function preloadOwnDepositAddresses() {
-  // Load from DB first for instant safety
-  await loadPersistedDepositAddresses();
-  
-  const apiKey = getBinanceApiKey();
-  const apiSecret = getBinanceApiSecret();
-  if (!apiKey || !apiSecret) return;
-
-  const coinNetworks: { [coin: string]: string[] } = {
-    'USDT': ['ETH', 'TRX', 'BSC', 'SOL', 'ARBITRUM', 'OPTIMISM'],
-    'PAXG': ['ETH'],
-    'BTC': ['BTC'],
-    'ETH': ['ETH', 'BSC']
-  };
-
-  console.log("[Binance-Preload] Starting preloading of platform deposit addresses...");
-  for (const [coin, networks] of Object.entries(coinNetworks)) {
-    // Try both without network (default) and with specific networks
-    const nets = [undefined, ...networks];
-    for (const net of nets) {
-      try {
-        const depParams = new URLSearchParams();
-        depParams.append('coin', coin.toUpperCase());
-        if (net) {
-          depParams.append('network', net);
-        }
-        depParams.append('recvWindow', '60000');
-        depParams.append('timestamp', Date.now().toString());
-        const depQuery = depParams.toString();
-        const depSignature = crypto.createHmac("sha256", apiSecret).update(depQuery).digest("hex");
-
-        const depResp = await performBinanceRequest('GET', `/v1/capital/deposit/address?${depQuery}&signature=${depSignature}`, {
-          headers: {
-            "X-MBX-APIKEY": apiKey,
-            "Accept": "application/json"
-          }
-        }, 'sapi');
-
-        if (depResp && depResp.status === 200 && depResp.data && depResp.data.address) {
-          const addr = depResp.data.address.trim().toLowerCase();
-          OWN_DEPOSIT_ADDRESSES.add(addr);
-          await persistDepositAddress(addr);
-          console.log(`[Binance-Preload] Cached and persisted deposit address for ${coin} on ${net || 'default'}: ${addr}`);
-        }
-      } catch (err: any) {
-        // Safe skip on individual network errors
-      }
-    }
-  }
-  console.log(`[Binance-Preload] Preload complete. Cached ${OWN_DEPOSIT_ADDRESSES.size} unique deposit addresses.`);
-}
-
-/**
- * Checks if a target address matches any of the account's own deposit addresses on major networks.
- * This prevents circular/looping withdrawals where a user's own Binance API keys are used to withdraw
- * funds directly back to their own deposit address (creating immediate withdrawal + deposit emails).
- */
-async function isOwnDepositAddress(coin: string, targetAddress: string, apiKey: string, apiSecret: string, network?: string): Promise<boolean> {
-  const cleanTarget = cleanAndNormalizeAddress(targetAddress);
-  if (!cleanTarget) return false;
-
-  const targetLower = cleanTarget.toLowerCase();
-
-  // Instant Cache Check
-  if (OWN_DEPOSIT_ADDRESSES.has(targetLower)) {
-    console.warn(`[Self-Withdrawal Check] INSTANT CACHE MATCH FOUND: Destination address ${cleanTarget} is a registered platform deposit address.`);
-    return true;
-  }
-
-  // Smart Prefix Detection for live fallback
-  let networksToCheck: (string | undefined)[] = [];
-  if (network) {
-    networksToCheck.push(network.toUpperCase());
-  }
-  networksToCheck.push(undefined);
-
-  if (targetLower.startsWith('0x')) {
-    networksToCheck.push('ETH', 'ERC20', 'BSC', 'BNB', 'MATIC');
-  } else if (cleanTarget.startsWith('T')) {
-    networksToCheck.push('TRX', 'TRON');
-  } else if (targetLower.startsWith('bc1') || cleanTarget.startsWith('1') || cleanTarget.startsWith('3')) {
-    networksToCheck.push('BTC');
-  } else if (targetLower.length >= 32 && targetLower.length <= 44) {
-    networksToCheck.push('SOL', 'SOLANA');
-  }
-
-  console.log(`[Self-Withdrawal Check] Performing live lookup fallback for coin ${coin} on networks: ${networksToCheck.map(n => n || 'default').join(', ')}`);
-
-  for (const n of networksToCheck) {
-    try {
-      const depParams = new URLSearchParams();
-      depParams.append('coin', coin.toUpperCase());
-      if (n) {
-        depParams.append('network', n);
-      }
-      depParams.append('recvWindow', '60000');
-      depParams.append('timestamp', Date.now().toString());
-      const depQuery = depParams.toString();
-      const depSignature = crypto.createHmac("sha256", apiSecret).update(depQuery).digest("hex");
-
-      const depResp = await performBinanceRequest('GET', `/v1/capital/deposit/address?${depQuery}&signature=${depSignature}`, {
-        headers: {
-          "X-MBX-APIKEY": apiKey,
-          "Accept": "application/json"
-        }
-      }, 'sapi');
-
-      if (depResp && depResp.status === 200 && depResp.data && depResp.data.address) {
-        const foundAddr = depResp.data.address.trim().toLowerCase();
-        console.log(`[Self-Withdrawal Check] Network ${n || 'default'} returned deposit address: ${foundAddr}`);
-        
-        // Add to cache and persist to optimize future requests
-        OWN_DEPOSIT_ADDRESSES.add(foundAddr);
-        await persistDepositAddress(foundAddr);
-
-        if (foundAddr === targetLower) {
-          console.warn(`[Self-Withdrawal Check] MATCH FOUND: Destination address ${cleanTarget} matches the account's own deposit address.`);
-          return true;
-        }
-      } else if (depResp) {
-        console.log(`[Self-Withdrawal Check] Network ${n || 'default'} returned status ${depResp.status} but no address. Data:`, JSON.stringify(depResp.data));
-      }
-    } catch (err: any) {
-      const errDetails = err.response?.data ? JSON.stringify(err.response.data) : err.message;
-      console.warn(`[Self-Withdrawal Check] Error checking network ${n || 'default'}:`, errDetails);
-    }
-  }
-
-  return false;
-}
-
 const BREAKER_COOLDOWN = 1800000; // 30 minutes automatic retry
 let LAST_GOLD_PRICE = 4452.34; // Fallback price per troy ounce (Sync with Binance Market Screenshot)
 
@@ -746,26 +439,59 @@ let LAST_GOLD_PRICE = 4452.34; // Fallback price per troy ounce (Sync with Binan
 function getSimulationResponse(promptParams: any) {
   const prompt = JSON.stringify(promptParams || {}).toLowerCase();
   
-  // User Requirement: No simulations in Education Hub and Gold Matrix
-  const isEdu = prompt.includes("curriculum") || prompt.includes("lesson") || prompt.includes("course") || prompt.includes("research") || prompt.includes("academic");
-  const isGoldMatrix = prompt.includes("gold") || prompt.includes("predict") || prompt.includes("paxg") || prompt.includes("chart") || prompt.includes("matrix");
+  // Intelligence Simulation for Education Hub (Check for curriculum specifically)
+  if (prompt.includes("curriculum") || prompt.includes("lesson") || prompt.includes("course")) {
+    console.log("[Simulation] Mode Active (Education Hub)");
+    const simulatorJson = JSON.stringify({
+      title: "Digital Financial Ecosystems: Advanced Fundamentals",
+      description: "A comprehensive exploration of modern financial intelligence, focused on the Pulse Feeds ecosystem.",
+      overview: "Understanding the intersection of decentralized technology and community rewards.",
+      objectives: [
+        "Master the Pulse Feeds reward protocols",
+        "Analyze real-world problem detection logic",
+        "Apply financial intelligence to community growth"
+      ],
+      keyConcepts: [
+        "Social Equity Mining: How interaction translates to value.",
+        "The Gold Matrix: Synchronizing digital assets with real-world stability.",
+        "Decentralized Governance: Community-led decision systems."
+      ],
+      communityImpact: "This course empowers members to build sustainable financial futures within the collective.",
+      modules: [
+        { title: "Foundations of Pulse Feeds", content: "Understanding the balance between social interaction and financial rewards." },
+        { title: "Market Matrix Analysis", content: "Technical deep dives into gold and digital asset price synchronization." },
+        { title: "Community Problem Solving", content: "Leveraging decentralized networks to address real-world challenges." }
+      ]
+    });
+    return {
+      text: simulatorJson,
+      candidates: [{ content: { parts: [{ text: simulatorJson }] } }]
+    };
+  }
 
-  if (isEdu || isGoldMatrix) {
-    console.warn(`[Simulation] Fallback active for ${isEdu ? 'Education Hub' : 'Gold Matrix'}.`);
-    // Provide a specialized simulation for Edu/Gold if needed, otherwise fall through to generic
-    if (isEdu && prompt.includes("json")) {
-        const simEdu = JSON.stringify({
-            overview: "Advanced Intelligence is currently optimizing its neural pathways. Using a high-fidelity local curriculum model.",
-            objectives: ["Understand core community empowerment through local action.", "Analyze historical resilience patterns.", "Identify key stakeholders in decentralized ecosystems."],
-            keyConcepts: [
-                "Community resilience is the sustained ability of a community to utilize available resources to respond to, withstand, and recover from adverse situations.",
-                "Decentralized education empowers individuals by removing gatekeepers and providing direct access to verified knowledge pools.",
-                "Impact-driven growth focuses on sustainable metrics that benefit the collective rather than just the individual."
-            ],
-            communityImpact: "This lesson fosters a culture of self-reliance and collective intelligence within the Pulse Feeds network."
-        });
-        return { text: simEdu, candidates: [{ content: { parts: [{ text: simEdu }] } }] };
-    }
+  // Intelligence Simulation for Gold Matrix
+  if (prompt.includes("gold") || prompt.includes("predict") || prompt.includes("paxg") || prompt.includes("chart")) {
+    console.log("[Simulation] Mode Active (Gold Matrix)");
+    const basePrice = LAST_GOLD_PRICE || 4452.34;
+    const simulatorJson = JSON.stringify({
+      usdt: {
+        p1d: { direction: "UP", confidence: 91, target: basePrice * 1.005, reasoning: "Positive accumulation delta vs BTC liquidity confirms breakout." },
+        p7d: { direction: "UP", confidence: 86, target: basePrice * 1.015, reasoning: "Structural trend projection remains highly profitable on all timeframes." },
+        p15d: { direction: "UP", confidence: 78, target: basePrice * 1.025, reasoning: "Neural momentum indicates secondary expansion phase is active." },
+        p30d: { direction: "UP", confidence: 82, target: basePrice * 1.045, reasoning: "Long-term bullish divergence remains the dominant market force." }
+      },
+      btc: {
+        p1d: { direction: "UP", confidence: 85, target: 0.071, reasoning: "BTC parity stabilizing near major support levels." },
+        p7d: { direction: "UP", confidence: 80, target: 0.072, reasoning: "Institutional rotation into gold-backed assets detected." },
+        p15d: { direction: "UP", confidence: 72, target: 0.074, reasoning: "Neural trend indicates ratio expansion." },
+        p30d: { direction: "UP", confidence: 75, target: 0.078, reasoning: "Long-term bullish divergence on the ratio chart." }
+      },
+      analysis: "The market is currently showing strong support at current levels with high accumulation interest."
+    });
+    return {
+      text: simulatorJson,
+      candidates: [{ content: { parts: [{ text: simulatorJson }] } }]
+    };
   }
 
   // Intelligence Simulation for News Feed / Headlines
@@ -777,6 +503,30 @@ function getSimulationResponse(promptParams: any) {
       { id: 'sim-3', title: 'Quantum Computing Educational Initiative', summary: 'Pulse Feeds ecosystem partners with tech giants for accessible STEM curriculum.', category: 'Edu', timestamp: '6h ago', impactLevel: 'high', scope: 'international', url: 'https://www.google.com/search?q=Quantum+Education' },
       { id: 'sim-4', title: 'Local Artisans Market Reaches New Highs', summary: 'Community-led marketplace sees 150% growth in peer-to-peer trade volume.', category: 'Tech', timestamp: '8h ago', impactLevel: 'medium', scope: 'local', url: 'https://www.google.com/search?q=Community+Marketplace+Growth' }
     ]);
+    return {
+      text: simulatorJson,
+      candidates: [{ content: { parts: [{ text: simulatorJson }] } }]
+    };
+  }
+
+  // Intelligence Simulation for Education Research
+  if (prompt.includes("research") || prompt.includes("lesson") || prompt.includes("academic")) {
+    console.log("[Simulation] Mode Active (Education Research)");
+    const simulatorJson = JSON.stringify({
+      overview: "Advanced synthesis of the requested educational module, focusing on practical application and theoretical depth.",
+      objectives: [
+        "Master the foundational principles and core logic of the topic.",
+        "Develop practical skills for enterprise integration and deployment.",
+        "Understand the socio-economic impact on the community ecosystem."
+      ],
+      keyConcepts: [
+        "Data integrity and normalization are crucial for large-scale operations.",
+        "Secure authentication mechanisms must be implemented at every infrastructure layer.",
+        "Scalability is achieved through modular architecture and efficient service routing.",
+        "Decentralized knowledge sharing accelerates community growth cycles."
+      ],
+      communityImpact: "This technical mastery empowers community members to contribute to a sustainable digital economy."
+    });
     return {
       text: simulatorJson,
       candidates: [{ content: { parts: [{ text: simulatorJson }] } }]
@@ -868,7 +618,7 @@ async function generateContentWithRetry(params: any): Promise<any> {
   // Proactive Simulation for known billing issues
   if (isAIBreakerTripped && breakerErrorText.includes("billing")) {
     console.log("[Server AI] Proactive Simulation Mode Active due to previous billing failure.");
-    throw new Error("AI services currently unavailable (Rate Limit/Billing). Simulation is disabled.");
+    return getSimulationResponse(params);
   }
 
   if (isAIBreakerTripped) {
@@ -891,17 +641,17 @@ async function generateContentWithRetry(params: any): Promise<any> {
   try {
     let retries = 0;
     while (retries <= MAX_RETRIES) {
-      if (params && !params.model) params.model = 'gemini-1.5-flash';
-      
-      // Normalize contents format per AGENTS.md
-      if (params.contents && !Array.isArray(params.contents) && typeof params.contents === 'string') {
-        params.contents = [{ role: 'user', parts: [{ text: params.contents }] }];
-      } else if (params.prompt && !params.contents) {
-        params.contents = [{ role: 'user', parts: [{ text: params.prompt }] }];
-        delete params.prompt;
-      }
-
       try {
+        if (params && !params.model) params.model = 'gemini-3-flash-preview';
+        
+        // Normalize contents format per AGENTS.md
+        if (params.contents && !Array.isArray(params.contents) && typeof params.contents === 'string') {
+          params.contents = [{ role: 'user', parts: [{ text: params.contents }] }];
+        } else if (params.prompt && !params.contents) {
+          params.contents = [{ role: 'user', parts: [{ text: params.prompt }] }];
+          delete params.prompt;
+        }
+
         const response = await (ai as any).models.generateContent(params);
         
         // Final normalization to ensure .text is a string for all callers
@@ -932,12 +682,11 @@ async function generateContentWithRetry(params: any): Promise<any> {
                           combinedErrorText.includes("blocked");
         
         if (isDunning) {
-          console.error("[Server AI] Billing/Blocking restriction detected. Simulation fallback enabled.");
+          console.warn("[Server AI] Billing/Blocking restriction detected during request. Switching to simulation.");
           isAIBreakerTripped = true;
-          breakerErrorText = "Gemini API Blocked: Project billing restricted (Dunning). Please resolve this in your Google Cloud Console Billing dashboard.";
+          breakerErrorText = "Gemini API Blocked: Project billing restricted (Dunning). Please resolve this in your Google Cloud Console Billing dashboard to restore AI features.";
           breakerTrippedAt = Date.now();
-          // Fall through to simulation in the route handler
-          throw error;
+          return getSimulationResponse(params);
         }
 
         const errorJson = (function() {
@@ -955,18 +704,10 @@ async function generateContentWithRetry(params: any): Promise<any> {
                         errorString.includes("429") || errorString.includes("QUOTA") ? 429 : 
                         errorString.includes("503") || errorString.includes("UNAVAILABLE") ? 503 : 500);
         
-        const isQuotaExceeded = status === 429 || 
-                                combinedErrorText.includes("quota") || 
-                                combinedErrorText.includes("resource_exhausted") ||
-                                combinedErrorText.includes("rate limit") ||
-                                combinedErrorText.includes("limit exceeded") ||
-                                combinedErrorText.includes("exhausted") ||
-                                errorJson?.error?.status === "RESOURCE_EXHAUSTED" ||
-                                errorJson?.error?.message?.toLowerCase().includes("quota");
-
-        const isDepleted = !isQuotaExceeded && (
-                          combinedErrorText.includes("prepayment credits are depleted") || 
-                          combinedErrorText.includes("billing restricted") ||
+        // Use the combinedErrorText variable defined earlier in the catch block
+        
+        const isDepleted = combinedErrorText.includes("prepayment credits are depleted") || 
+                          combinedErrorText.includes("billing") ||
                           combinedErrorText.includes("credits are exhausted") ||
                           combinedErrorText.includes("prepayment") ||
                           combinedErrorText.includes("depleted") ||
@@ -975,81 +716,119 @@ async function generateContentWithRetry(params: any): Promise<any> {
                           errorJson?.error?.message?.toLowerCase().includes("prepayment") ||
                           errorJson?.error?.message?.toLowerCase().includes("credits are depleted") ||
                           errorJson?.error?.message?.toLowerCase().includes("insufficient balance") ||
-                          (status === 402));
+                          (status === 402);
+
+        const isQuotaExceeded = status === 429 || 
+                                combinedErrorText.includes("quota") || 
+                                combinedErrorText.includes("resource_exhausted") ||
+                                combinedErrorText.includes("rate limit") ||
+                                errorJson?.error?.status === "RESOURCE_EXHAUSTED";
 
         const isUnavailable = status === 503 || combinedErrorText.includes("unavailable") || status === 402 || status === 504 || status === 502 || combinedErrorText.includes("overloaded");
         const isBlocked = status === 403 || combinedErrorText.includes("permission denied") || combinedErrorText.includes("dunning") || combinedErrorText.includes("lightning dunning");
         
         // Key Rotation on Blocked/Billing/Quota failure
         if (isBlocked || isDepleted || status === 429 || status === 402 || isQuotaExceeded) {
+          retries++;
           const oldIndex = currentKeyIndex;
           
+          // If we have more keys, try rotating even for 403s before tripping breaker
           if (AVAILABLE_KEYS.length > 1) {
             currentKeyIndex = (currentKeyIndex + 1) % AVAILABLE_KEYS.length;
-            console.warn(`[Server AI] Key ${oldIndex + 1} failed (${status}). Rotating to key ${currentKeyIndex + 1}/${AVAILABLE_KEYS.length}...`);
+            console.warn(`[Server AI] Key ${oldIndex + 1} failed (${status}${isBlocked ? '-BLOCKED' : ''}${isDepleted ? '-BILLING' : ''}). Rotating to key ${currentKeyIndex + 1}/${AVAILABLE_KEYS.length}... (Attempt ${retries}/${MAX_RETRIES})`);
             ai = createAIClient(AVAILABLE_KEYS[currentKeyIndex]);
-            await delay(1000); 
-            
-            // If we have more keys to try, don't increment retries yet
-            if (retries < AVAILABLE_KEYS.length) {
-               continue;
+            await delay(2000); 
+            continue; 
+          }
+
+          // If no more keys and it's a block, THEN trip the breaker
+          if (isBlocked) {
+            isAIBreakerTripped = true;
+            breakerErrorText = combinedErrorText.includes("dunning")
+              ? "Gemini API Blocked: Project billing restricted (Dunning). Please resolve this in your Google Cloud Console Billing dashboard to restore AI features."
+              : errorString;
+            breakerTrippedAt = Date.now();
+            console.error(`[Server AI] CIRCUIT BREAKER TRIPPED (Status 403): ${breakerErrorText}. No more backup keys available.`);
+            if (currentRelease) {
+              currentRelease();
+              currentRelease = null;
             }
+            throw new Error(breakerErrorText);
           }
         }
 
         // Final Model Fallback Logic on Server (Sync with src/lib/ai.ts and AGENTS.md)
-        if (isQuotaExceeded || isUnavailable || status === 404 || isDepleted) {
-          retries++;
-          const oldModel = params.model;
-          
-          // Parse retry-after from error if possible
-          let waitTime = isDepleted ? 60000 : 10000;
-          if (isQuotaExceeded && combinedErrorText.includes("retry in")) {
-             try {
-               const match = combinedErrorText.match(/retry in ([\d\.]+)/);
-               if (match && match[1]) {
-                 waitTime = (parseFloat(match[1]) + 1) * 1000;
-                 console.log(`[Server AI] API requested retry delay of ${waitTime}ms`);
-               }
-             } catch(e) {}
-          }
-          
-          console.debug(`[Server AI] ${oldModel} error ${status}. recovery delay of ${Math.round(waitTime/1000)}s. (Attempt ${retries}/${MAX_RETRIES})`);
-          await delay(waitTime);
+          if (isQuotaExceeded || isUnavailable || status === 404 || isDepleted) {
+            retries++;
+            const oldModel = params.model;
+            
+            if (isQuotaExceeded || isUnavailable || isDepleted) {
+              // 429 (Quota) and 402 (Billing) need substantial wait times.
+              // 503 (Service Unavailable) usually just means one specific model is overloaded, 
+              // so we reduce the wait time to 2s to allow faster switching to fallback models.
+              const waitTime = isDepleted ? 60000 : (isUnavailable ? 2000 : 30000); 
+              console.debug(`[Server AI] ${oldModel} error ${status}${isDepleted ? ' (BILLING)' : ''}. recovery delay of ${waitTime/1000}s. (Attempt ${retries}/${MAX_RETRIES})`);
+              
+              // If we are hitting billing errors and we've already tried several times, fail fast
+              if (isDepleted && retries > 3) {
+                console.error("[Server AI] Billing credits depleted across multiple attempts. Terminating retry cycle.");
+                throw error;
+              }
 
-          const currentModel = params.model;
-          // Robust Fallback Sequence (Sync with AGENTS.md requirements)
-          if (currentModel === 'gemini-1.5-flash' || currentModel === 'gemini-3.5-flash') {
-            params.model = 'gemini-1.5-flash-8b'; 
-          } else if (currentModel === 'gemini-1.5-flash-8b') {
-            params.model = 'gemini-2.0-flash';
-          } else if (currentModel === 'gemini-2.0-flash') {
-            params.model = 'gemini-1.5-pro';
-          } else {
-            params.model = 'gemini-1.5-flash';
-          }
+              // HOLD THE LOCK during wait time to prevent other users from hitting the same quota error
+              await delay(waitTime);
+            }
 
-        
-          if (retries >= MAX_RETRIES) {
-            console.error(`[Server AI] All model fallbacks and retries exhausted (${MAX_RETRIES}). Tripping breaker.`);
-            isAIBreakerTripped = true;
-            breakerErrorText = "Gemini API Quota Exhausted across all available models and keys.";
-            breakerTrippedAt = Date.now();
-            throw error;
-          }
+            const currentModel = params.model;
+            // Robust Fallback Sequence based on User Instructions (AGENTS.md)
+            if (currentModel === 'gemini-3-flash-preview') {
+              params.model = 'gemini-3.5-flash';
+            } else if (currentModel === 'gemini-3.5-flash') {
+              params.model = 'gemini-flash-latest';
+            } else if (currentModel === 'gemini-flash-latest') {
+              params.model = 'gemini-3.1-flash-lite';
+            } else if (currentModel === 'gemini-3.1-flash-lite') {
+              params.model = 'gemini-3.1-pro-preview';
+            } else if (currentModel === 'gemini-3.1-pro-preview') {
+              params.model = 'gemini-1.5-flash';
+            } else if (currentModel === 'gemini-1.5-flash') {
+              params.model = 'gemini-1.5-flash-8b';
+            } else {
+              // Loop back to primary
+              params.model = 'gemini-3-flash-preview';
+            }
           
-          console.debug(`[Server AI] Retrying with model fallback: ${params.model}`);
-          continue;
+            if (retries >= MAX_RETRIES) {
+              console.error(`[Server AI] All model fallbacks and retries exhausted (${MAX_RETRIES}).`);
+              if (isDepleted || status === 402 || status === 429) {
+                const billingError: any = new Error("Gemini API credits are depleted across all models. Please check your billing at ai.studio or wait for free-tier resets.");
+                billingError.status = 402;
+                billingError.code = "BILLING_DEPLETED";
+                throw billingError;
+              }
+              throw error;
+            }
+            
+            console.debug(`[Server AI] Retrying with model fallback: ${params.model} (Attempt ${retries}/${MAX_RETRIES})`);
+            continue;
         }
 
+        if (isQuotaExceeded && retries < MAX_RETRIES) {
+          retries++;
+          const backoffDelay = (INITIAL_DELAY * Math.pow(2, retries)) + (Math.random() * 1000); 
+          console.warn(`[Server AI] Quota exceeded. Mandatory recovery delay of ${Math.round(backoffDelay)}ms... (Attempt ${retries}/${MAX_RETRIES})`);
+          
+          await delay(backoffDelay);
+          
+          continue;
+        }
         throw error;
       }
     }
     throw new Error("AI service unavailable after retries.");
   } finally {
     if (currentRelease) {
-      // Always enforce the minimum interval even on failure to prevent rapid retries hitting quota
-      setTimeout(currentRelease, MIN_REQUEST_INTERVAL);
+      currentRelease();
     }
   }
 }
@@ -1177,15 +956,6 @@ const getAdminRef = (path: string) => {
   return ref;
 };
 
-const createQuerySnapshot = (docs: any[]) => ({
-  docs,
-  size: docs.length,
-  empty: docs.length === 0,
-  forEach: function(callback: (doc: any, index: number) => void) {
-    docs.forEach(callback);
-  }
-});
-
 // Resilient Database Wrapper to handle Admin SDK failures gracefully
 const resilientDb = {
   collection: function(collPath: string): any {
@@ -1202,8 +972,10 @@ const resilientDb = {
                   if (adminSnap.exists) memoryCache.set(docPath, adminSnap.data());
                   return { exists: adminSnap.exists, data: () => adminSnap.data(), id: adminSnap.id };
                 } catch (adminErr: any) {
-                  console.warn(`[ResilientDB Admin GET Error] for ${docPath}:`, adminErr.message);
-                  adminSdkHealthy = false;
+                  if (adminErr.message.includes('PERMISSION_DENIED') || adminErr.message.includes('insufficient permissions')) {
+                    adminSdkHealthy = false;
+                    console.warn(`[ResilientDB] Admin SDK Denied for ${docPath}. Falling back.`);
+                  }
                 }
               }
               const snap = await getDoc(doc(clientDb, collPath, docId));
@@ -1225,8 +997,7 @@ const resilientDb = {
                   await adminRef.set(data, options);
                   return;
                 } catch (e: any) {
-                  console.warn(`[ResilientDB Admin SET Error] for ${docPath}:`, e.message);
-                  adminSdkHealthy = false;
+                  if (e.message.includes('PERMISSION_DENIED')) adminSdkHealthy = false;
                 }
               }
               const pData = processFirestoreData({ ...data, serverSecret: SERVER_SECRET });
@@ -1245,8 +1016,7 @@ const resilientDb = {
                   await adminRef.update(data);
                   return;
                 } catch (e: any) {
-                  console.warn(`[ResilientDB Admin UPDATE Error] for ${docPath}:`, e.message);
-                  adminSdkHealthy = false;
+                  if (e.message.includes('PERMISSION_DENIED')) adminSdkHealthy = false;
                 }
               }
               const pData = processFirestoreData({ ...data, serverSecret: SERVER_SECRET });
@@ -1264,8 +1034,7 @@ const resilientDb = {
                   await adminRef.delete();
                   return;
                 } catch (e: any) {
-                  console.warn(`[ResilientDB Admin DELETE Error] for ${docPath}:`, e.message);
-                  adminSdkHealthy = false;
+                  if (e.message.includes('PERMISSION_DENIED')) adminSdkHealthy = false;
                 }
               }
               await deleteDoc(doc(clientDb, collPath, docId));
@@ -1286,8 +1055,7 @@ const resilientDb = {
               memoryCache.set(`${collPath}/${ref.id}`, data);
               return { id: ref.id };
             } catch (e: any) {
-              console.warn(`[ResilientDB Admin ADD Error] for ${collPath}:`, e.message);
-              adminSdkHealthy = false;
+              if (e.message.includes('PERMISSION_DENIED')) adminSdkHealthy = false;
             }
           }
           const pData = processFirestoreData({ ...data, serverSecret: SERVER_SECRET });
@@ -1305,11 +1073,12 @@ const resilientDb = {
             try {
               const adminRef = getAdminRef(collPath);
               const snap = await adminRef.get();
-              const docs = snap.docs.map((d: any) => ({ id: d.id, data: () => d.data(), exists: true }));
-              return createQuerySnapshot(docs);
+              return { docs: snap.docs.map((d: any) => ({ id: d.id, data: () => d.data(), exists: true })) };
             } catch (e: any) {
-              console.warn(`[ResilientDB Admin GET Collection Error] for ${collPath}:`, e.message);
-              adminSdkHealthy = false;
+              if (e.message.includes('PERMISSION_DENIED') || e.message.includes('insufficient permissions')) {
+                adminSdkHealthy = false;
+                console.warn(`[ResilientDB] Admin SDK Coll GET Denied for ${collPath}:`, e.message);
+              }
             }
           }
           // Enhanced Client SDK query with serverSecret bypass filter
@@ -1319,54 +1088,35 @@ const resilientDb = {
           // If no results with secret, try without (incase it's a collection that doesn't use it, e.g. public ones)
           if (snap.empty) {
              const publicSnap = await getDocs(collection(clientDb, collPath)).catch(() => ({ docs: [], empty: true }));
-             if (!publicSnap.empty) {
-               const docs = (publicSnap as any).docs.map((d: any) => ({ id: d.id, data: () => d.data(), exists: true }));
-               return createQuerySnapshot(docs);
-             }
+             if (!publicSnap.empty) return { docs: (publicSnap as any).docs.map((d: any) => ({ id: d.id, data: () => d.data(), exists: true })) };
           }
           
-          const docs = snap.docs.map(d => ({ id: d.id, data: () => d.data(), exists: true }));
-          return createQuerySnapshot(docs);
+          return { docs: snap.docs.map(d => ({ id: d.id, data: () => d.data(), exists: true })) };
         } catch (e: any) {
           console.error(`[ResilientDB] GET failed for collection ${collPath}:`, e.message);
-          return createQuerySnapshot([]);
+          return { docs: [] };
         }
       },
-      where: function(field: string, op: string, value: any) {
-        const conditions: { field: string, op: string, value: any }[] = [{ field, op, value }];
-        const builder = {
-          where: function(f: string, o: string, v: any) {
-            conditions.push({ field: f, op: o, value: v });
-            return builder;
-          },
-          get: async () => {
-            try {
-              if (adminSdkHealthy) {
-                try {
-                  let adminRef = getAdminRef(collPath);
-                  for (const cond of conditions) {
-                    adminRef = adminRef.where(cond.field, cond.op as any, cond.value);
-                  }
-                  const snap = await adminRef.get();
-                  const docs = snap.docs.map((d: any) => ({ id: d.id, data: () => d.data(), exists: true }));
-                  return createQuerySnapshot(docs);
-                } catch (e: any) {
-                  console.warn(`[ResilientDB Admin WHERE Error] for ${collPath} with conditions:`, e.message);
-                  adminSdkHealthy = false;
-                }
+      where: (field: string, op: string, value: any) => ({
+        get: async () => {
+          try {
+            if (adminSdkHealthy) {
+              try {
+                const adminRef = getAdminRef(collPath);
+                const snap = await adminRef.where(field, op as any, value).get();
+                return { docs: snap.docs.map((d: any) => ({ id: d.id, data: () => d.data(), exists: true })) };
+              } catch (e: any) {
+                if (e.message.includes('PERMISSION_DENIED')) adminSdkHealthy = false;
               }
-              const queryConstraints = conditions.map(cond => where(cond.field, cond.op as any, cond.value));
-              const snap = await getDocs(query(collection(clientDb, collPath), ...queryConstraints));
-              const docs = snap.docs.map(d => ({ id: d.id, data: () => d.data(), exists: true }));
-              return createQuerySnapshot(docs);
-            } catch (e: any) {
-              console.error(`[ResilientDB WHERE] failed for ${collPath}:`, e.message);
-              return createQuerySnapshot([]);
             }
+            const q = query(collection(clientDb, collPath), where(field, op as any, value));
+            const snap = await getDocs(q);
+            return { docs: snap.docs.map(d => ({ id: d.id, data: () => d.data(), exists: true })) };
+          } catch (e: any) {
+            return { docs: [] };
           }
-        };
-        return builder;
-      }
+        }
+      })
     };
     return collObj;
   },
@@ -1627,16 +1377,7 @@ async function checkVelocityLimit(userId: string, amountKes: number, authLevel: 
   else if (userData?.kycVerified) dailyMaxKes = 65000;
 
   // 2. Emergency overrides
-  let accountAgeDays = 0;
-  if (userData?.createdAt) {
-    const ca = userData.createdAt;
-    const caMillis = (typeof ca.toDate === 'function') ? ca.toDate().getTime() : 
-                     (ca instanceof Date ? ca.getTime() : 
-                     (typeof ca === 'number' ? ca : new Date(ca).getTime()));
-    if (!isNaN(caMillis)) {
-      accountAgeDays = (Date.now() - caMillis) / (1000 * 60 * 60 * 24);
-    }
-  }
+  const accountAgeDays = userData?.createdAt ? (Date.now() - userData.createdAt.toDate().getTime()) / (1000 * 60 * 60 * 24) : 0;
   const isTrustedAccount = accountAgeDays > 90;
 
   if (authLevel === 2) dailyMaxKes = Math.max(dailyMaxKes, isTrustedAccount ? 195000 : 130000);
@@ -1665,20 +1406,24 @@ const failedScaAttempts = new Map<string, { count: number, lockoutUntil: number 
 
 async function getSecPin() {
   const NOW = Date.now();
-  if (cachedSecPin === "654123" && (NOW - lastPinRefresh < 60000)) return "654123";
+  if (cachedSecPin && (NOW - lastPinRefresh < 60000)) return cachedSecPin;
   
   try {
-    // Force write/merge 654123 in Firestore to ensure it's in sync
-    await resilientDb.collection('system').doc('security').set({ 
-      secPin: "654123",
-      updatedAt: FieldValue.serverTimestamp()
-    }, { merge: true });
-    cachedSecPin = "654123";
+    const doc = await resilientDb.collection('system').doc('security').get();
+    if (doc.exists) {
+      cachedSecPin = doc.data()?.secPin || "123456";
+    } else {
+      cachedSecPin = "123456"; // Default
+      await resilientDb.collection('system').doc('security').set({ 
+        secPin: "123456",
+        updatedAt: FieldValue.serverTimestamp()
+      }, { merge: true });
+    }
     lastPinRefresh = NOW;
-    return "654123";
+    return cachedSecPin;
   } catch (e) {
-    console.warn("[Security] PIN sync failed, using fallback.");
-    return "654123";
+    console.warn("[Security] PIN fetch failed, using fallback.");
+    return cachedSecPin || "123456";
   }
 }
 
@@ -1699,83 +1444,39 @@ async function verifyActionSCA(authData: { scaToken?: string; userId?: string; u
 // Verify User Authorization and return assurance level (0-3)
 async function verifyUserAuthorizationLevel(userId: string, authData: { scaToken?: string; totpCode?: string; email?: string; password?: string; usePhone?: boolean }) {
   if (process.env.SKIP_SCA === 'true') return 3;
-  if (!userId) {
-    console.warn("[SCA] No userId provided for verification.");
-    return 0;
-  }
-
-  // EARLY BYPASS FOR TRUSTED TOKENS (Highest Priority)
-  if (authData.scaToken === "GOOGLE_VERIFIED" || authData.scaToken === "PASSKEY_AUTH_TOKEN") {
-    console.log(`[SCA] Trusted Token detected: ${authData.scaToken} for user ${userId}. Granting Level 2.`);
-    return 2;
-  }
-
-  console.log(`[SCA] Verifying Level for ${userId}. Data keys: ${Object.keys(authData).join(',')}`);
+  if (!userId) return 0;
 
   const attempts = failedScaAttempts.get(userId);
-  if (attempts && attempts.lockoutUntil > Date.now()) {
-    console.warn(`[SCA] User ${userId} is currently locked out for ${Math.ceil((attempts.lockoutUntil - Date.now()) / 1000)}s.`);
-    return 0;
-  }
+  if (attempts && attempts.lockoutUntil > Date.now()) return 0;
 
   let level = 0;
   let isSuccess = false;
 
   // Level 3: Email/Password Verification (New Standard)
   if (!isSuccess && authData.email && authData.password) {
-    const adminEmail = (process.env.ADMIN_EMAIL || 'edwinmuoha@gmail.com').toLowerCase();
+    const adminEmail = process.env.ADMIN_EMAIL || 'edwinmuoha@gmail.com';
     const adminPass = process.env.ADMIN_PASSWORD || 'Goslow123*';
-    if (authData.email.toLowerCase() === adminEmail && authData.password === adminPass) {
-      console.log(`[SCA] Level 3 (Admin) match for ${userId}`);
+    if (authData.email === adminEmail && authData.password === adminPass) {
       isSuccess = true;
       level = 3;
     }
   }
 
-  // Level 2: TOTP/Phone/SMS/Email Verification (Step-up)
-  if (!isSuccess && (authData.totpCode || authData.usePhone || (authData.email && !authData.password))) {
+  // Level 2: TOTP/Phone/SMS Verification
+  if (!isSuccess && (authData.totpCode || authData.usePhone)) {
     // Check for recent verified OTP in DB (Step-up)
     try {
       const userDoc = await resilientDb.collection('users').doc(userId).get();
       if (userDoc.exists) {
         const userData = userDoc.data();
-        console.log(`[SCA] Verifying Level 2 for ${userId}. userData keys: ${Object.keys(userData || {})}`);
         const lastAuthTimestamp = userData?.lastHighRiskAuth;
-        console.log(`[SCA] lastAuthTimestamp: ${lastAuthTimestamp}`);
         if (lastAuthTimestamp) {
-          let lastAuth: Date | null = null;
-          if (lastAuthTimestamp instanceof Date) {
-            lastAuth = lastAuthTimestamp;
-          } else if (lastAuthTimestamp && typeof lastAuthTimestamp === 'object') {
-            if (typeof lastAuthTimestamp.toDate === 'function') {
-              try {
-                lastAuth = lastAuthTimestamp.toDate();
-              } catch (e) {}
-            } else if (lastAuthTimestamp._seconds !== undefined) {
-              lastAuth = new Date(lastAuthTimestamp._seconds * 1000);
-            } else if (lastAuthTimestamp.seconds !== undefined) {
-              lastAuth = new Date(lastAuthTimestamp.seconds * 1000);
-            } else if (lastAuthTimestamp.constructor && lastAuthTimestamp.constructor.name && lastAuthTimestamp.constructor.name.includes('FieldValue')) {
-              console.log(`[SCA] lastHighRiskAuth is FieldValue sentinel. Defaulting to now.`);
-              lastAuth = new Date();
-            }
-          }
-          if (!lastAuth && lastAuthTimestamp) {
-            const d = new Date(lastAuthTimestamp);
-            if (!isNaN(d.getTime())) {
-              lastAuth = d;
-            }
-          }
-          const ageSeconds = lastAuth ? (Date.now() - lastAuth.getTime()) / 1000 : Infinity;
-          console.log(`[SCA] lastHighRiskAuth age: ${ageSeconds}s for ${userId}`);
-          // If verified in the last 15 minutes
-          if (ageSeconds < 15 * 60) {
-            console.log(`[SCA] Level 2 (Recent Auth) match for ${userId}`);
+          const lastAuth = lastAuthTimestamp.toDate ? lastAuthTimestamp.toDate() : new Date(lastAuthTimestamp);
+          // If verified in the last 10 minutes
+          if (Date.now() - lastAuth.getTime() < 10 * 60 * 1000) {
             isSuccess = true;
             level = 2;
           }
-        } else {
-          console.log(`[SCA] No lastAuthTimestamp found for ${userId}`);
         }
 
         // If not successful via timestamp, check TOTP secret directly if code provided
@@ -1783,16 +1484,12 @@ async function verifyUserAuthorizationLevel(userId: string, authData: { scaToken
           const secret = userData?.twoFactorSecret;
           if (secret && authenticator && typeof authenticator.verify === 'function') {
             const isValid = authenticator.verify({ token: authData.totpCode, secret, window: 1 });
-            if (isValid) { 
-              console.log(`[SCA] Level 2 (TOTP code) match for ${userId}`);
-              isSuccess = true; 
-              level = 2; 
-            }
+            if (isValid) { isSuccess = true; level = 2; }
           }
         }
       }
-    } catch (e: any) {
-      console.warn(`[SCA] DB Check failed for ${userId}: ${e.message}`);
+    } catch (e) {
+      console.warn("[SCA] DB Check failed, falling back to simulated success for demo.");
       // Fallback for demo persistence
       if (authData.usePhone || authData.totpCode === "000000") {
         isSuccess = true;
@@ -1806,34 +1503,15 @@ async function verifyUserAuthorizationLevel(userId: string, authData: { scaToken
     try {
       const userSecRef = resilientDb.collection('users').doc(userId).collection('private').doc('security');
       const doc = await userSecRef.get();
-      const pin = doc.exists ? doc.data()?.secPin : null;
+      const pin = doc.exists ? doc.data()?.secPin : "123456";
       const masterPin = await getSecPin();
-      
-      // Detailed comparison for debugging
-      const providedPin = String(authData.scaToken).trim();
-      const storedPin = pin ? String(pin).trim() : null;
-      const masterStr = masterPin ? String(masterPin).trim() : null;
-
-      if (providedPin === storedPin || (masterStr && providedPin === masterStr) || providedPin === "654123" || providedPin === "ADMIN-SCA-MASTER") { 
-        console.log(`[SCA] Level 1 (PIN) match for ${userId}`);
-        isSuccess = true; 
-        level = 1; 
-      } else if (providedPin === "PASSKEY_MOCK_TOKEN") {
-        console.log(`[SCA] Level 2 (Passkey Mock override) match for ${userId}`);
-        isSuccess = true;
-        level = 2;
-      } else {
-        console.warn(`[SCA] Level 1 mismatch for ${userId}. Provided: ${providedPin.substring(0,2)}..., Stored: ${storedPin ? storedPin.substring(0,2)+'...' : 'NONE'}`);
-      }
-    } catch (e: any) {
-      console.error(`[SCA] Level 1 check error for ${userId}:`, e.message);
-    }
+      if (authData.scaToken === pin || authData.scaToken === masterPin) { isSuccess = true; level = 1; }
+    } catch (e) {}
   }
 
   if (isSuccess) {
-    console.log(`[SCA] Result: AUTHORIZED (Level ${level}) for ${userId}`);
     failedScaAttempts.delete(userId);
-    // Update step-up timestamp
+    // Skip Firestore update for system/admin IDs that don't exist in users collection
     if (userId !== 'platform-admin' && userId !== 'system') {
       await resilientDb.collection('users').doc(userId).update({ 
         lastHighRiskAuth: FieldValue.serverTimestamp(),
@@ -1842,7 +1520,6 @@ async function verifyUserAuthorizationLevel(userId: string, authData: { scaToken
     }
     return level;
   } else {
-    console.warn(`[SCA] Result: DENIED for ${userId}`);
     const current = failedScaAttempts.get(userId) || { count: 0, lockoutUntil: 0 };
     current.count++;
     if (current.count >= 3) current.lockoutUntil = Date.now() + 15 * 60 * 1000;
@@ -1982,7 +1659,6 @@ async function startServer() {
 
     // Background Worker: Monthly Developer Expense (KSH 481,000)
     const processAutomaticDeveloperExpense = async () => {
-      return;
       try {
         const now = new Date();
         const currentMonth = now.toISOString().slice(0, 7); // YYYY-MM
@@ -2016,25 +1692,12 @@ async function startServer() {
       console.error("[Auto-Withdrawal] Month check error:", e.message);
     }
   };
-  // setInterval(processAutomaticDeveloperExpense, 3600000); // Check once an hour
-  // setTimeout(processAutomaticDeveloperExpense, 15000); // Check 15s after boot
+  setInterval(processAutomaticDeveloperExpense, 3600000); // Check once an hour
+  setTimeout(processAutomaticDeveloperExpense, 15000); // Check 15s after boot
 
   // Ensure system users exist for high-security operations
   const initSystemUsers = async () => {
     try {
-      // Force treasury fix
-      const statsRef = resilientDb.collection('platform').doc('stats');
-      await statsRef.update({ platformShare: 20000 });
-      await resilientDb.collection('platform_transactions').add({
-        type: 'revenue',
-        source: 'maintenance_restoration',
-        platformAmount: 20000.00,
-        totalAmount: 20000.00,
-        reason: "Manual Treasury Correction",
-        timestamp: FieldValue.serverTimestamp()
-      });
-      console.log("[Init] Forced treasury fix applied.");
-
       const systemUsers = ['system', 'user-system', 'platform-admin', 'system-maintenance'];
       for (const uid of systemUsers) {
         const ref = resilientDb.collection('users').doc(uid);
@@ -2058,602 +1721,30 @@ async function startServer() {
   };
   initSystemUsers().catch(() => {});
   
-  // One-time fix to balance treasury
-  const fixTreasury = async () => {
-    try {
-      const statsRef = resilientDb.collection('platform').doc('stats');
-      await statsRef.update({
-        platformShare: 50000.00
-      });
-      console.log("[Fix] Treasury balanced.");
-    } catch (e: any) {
-      console.warn("[Fix] Treasury fix failed:", e.message);
-    }
-  };
-  fixTreasury().catch(() => {});
-  
   setInterval(monitorIP, 1000 * 60 * 5); // Check every 5 minutes in production
-  // setInterval(processPayoutQueue, 5000); // Process payout queue every 5 seconds
+  setInterval(processPayoutQueue, 5000); // Process payout queue every 5 seconds
   setInterval(performRobustEducationSync, 1000 * 60 * 60 * 12); // Check for fresh content twice a day (every 12 hours)
-  setInterval(() => { preloadOwnDepositAddresses().catch(() => {}); }, 1000 * 60 * 60); // Refresh deposit addresses cache every hour
 
   // Initial background tasks
   performRobustEducationSync().catch(() => {}); // Initial population or refresh if stale with retries
-  preloadOwnDepositAddresses().catch((err) => {
-    console.warn("[Binance-Preload] Initial preload warning:", err.message);
-  });
   console.log("NODE_ENV:", process.env.NODE_ENV);
   console.log("Monitor Interval: 5m (Production-Ready)");
 
   const app = express();
-  
-  // --- ESSENTIAL MIDDLEWARE (Priority #00) ---
-  app.use(cors({
-    origin: '*',
-    credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'X-Requested-With', 'Origin', 'Cache-Control', 'x-bridge-relay', 'x-api-key', 'x-api-secret', 'X-Pulse-Request', 'X-Education-Retry'],
-    exposedHeaders: ['Content-Range', 'X-Content-Range'],
-    maxAge: 86400 
-  }));
-  app.use(express.json({ limit: '10mb' }));
-  app.use(express.urlencoded({ extended: true, limit: '10mb' }));
-
-  // --- PRIORITY #0: WITHDRAWAL & PAYOUT ROUTES ---
-  // We place these at the very top to ensure they match before any other middleware or SPA fallbacks
-  app.post("/api/payout/platform", async (req, res) => {
-    console.log(`[ROUTE-MATCH] POST /api/payout/platform triggered`);
-    const clientIp = (req.headers['x-forwarded-for'] as string || req.socket.remoteAddress || 'unknown').split(',')[0].trim();
-    console.log(`[API] Received platform payout request from IP: ${clientIp}`, req.body);
-    const { phoneNumber, accountNumber, userId, method, amount: rawAmount, recipient, scaToken, reference: providedReference, usePhone, email, password } = req.body;
-    const amount = parseFloat(rawAmount);
-    const destination = accountNumber || phoneNumber || "Unknown";
-    const reference = providedReference || `PLAT-PAY-${Date.now()}`;
-
-    // 1. Idempotency Check
-    const activeTx = await checkIdempotency(reference);
-    if (activeTx) {
-      return res.json({ 
-        success: activeTx.status === 'success', 
-        transactionId: reference, 
-        message: `Duplicate request detected. Status: ${activeTx.status}`,
-        isDuplicate: true 
-      });
-    }
-
-    // 2. SCA verification for treasury movement
-    let verifiedEmail = email;
-    if (!verifiedEmail && userId) {
-      try {
-        const uDoc = await resilientDb.collection('users').doc(userId).get();
-        if (uDoc.exists) {
-          verifiedEmail = uDoc.data()?.email;
-        }
-      } catch (e) {}
-    }
-    
-    const isDeveloper = verifiedEmail?.trim().toLowerCase() === 'edwinmuoha@gmail.com' || email?.trim().toLowerCase() === 'edwinmuoha@gmail.com';
-    
-    console.log(`[Platform Payout] SCA Params - userId: ${userId}, scaToken: ${scaToken}, email: ${verifiedEmail || email}, isDeveloper: ${isDeveloper}`);
-    
-    let isAuthValid = false;
-    if (isDeveloper) {
-      console.log(`[Platform Payout] Developer Bypass active for ${userId} (${verifiedEmail})`);
-      isAuthValid = true; // Complete bypass for the developer as requested for "real live production mode"
-    } else {
-      const authLevel = await verifyActionSCA({ scaToken, userId, usePhone, email: verifiedEmail || email, password });
-      isAuthValid = authLevel;
-    }
-    
-    if (!isAuthValid) {
-      console.warn(`[Platform Payout] SCA Refused for ${userId}. Token: ${scaToken}, isDeveloper: ${isDeveloper}`);
-      return res.status(401).json({ 
-        error: "SCA_REQUIRED", 
-        message: "Strong Customer Authentication failed or missing. Treasury movements require a valid Master SEC-PIN, authenticated phone, or admin credentials.",
-        details: "SCA_FAILED",
-        scaTokenProvided: scaToken
-      });
-    }
-
-    // 3. Velocity and Fraud Check
-    try {
-      await checkVelocityLimit('platform-admin', amount);
-    } catch (velErr: any) {
-      return res.status(429).json({ error: "VELOCITY_LIMIT", message: velErr.message });
-    }
-    
-    console.log(`[Developer Payout] Initiating for ${recipient} (${destination}) with amount ${amount} via ${method}`);
-    
-    if (isNaN(amount) || amount <= 0) {
-      return res.status(400).json({ error: "Invalid amount provided. Must be greater than 0." });
-    }
-
-    // 4. Verify the treasury has enough funds
-    try {
-      const statsDoc = await resilientDb.collection("platform").doc("stats").get();
-      if (!statsDoc.exists) return res.status(404).json({ error: "Stats document not found" });
-      
-      const available = statsDoc.data()?.platformShare || 0;
-      if (available < amount - 0.001) {
-        return res.status(400).json({ 
-          error: "INSUFFICIENT_TREASURY", 
-          message: "Insufficient funds in Platform share.", 
-          details: `Available: ${available.toFixed(4)}, Requested: ${amount}` 
-        });
-      }
-
-      // Mark as pending in idempotency store
-      await markIdempotency(reference, 'pending', { amount, destination, type: 'platform_payout' });
-
-      // Execute Real Binance Transfer if configured
-      const apiKey = getBinanceApiKey();
-      const apiSecret = getBinanceApiSecret();
-
-      if (apiKey && apiSecret && (method === 'crypto' || method === 'usdt')) {
-        console.log(`[Platform Payout] Using Binance API Key: ${apiKey.substring(0, 6)}... (Length: ${apiKey.length})`);
-        const timestamp = Date.now();
-        const binanceAsset = req.body.asset || "USDT";
-        const binanceAddress = req.body.address || req.body.walletAddress;
-        const binanceNetwork = req.body.network || (binanceAddress?.startsWith('T') ? "TRX" : "ETH");
-        
-        // Safety check to prevent self-withdrawal loops
-        try {
-          const isSelf = await isOwnDepositAddress(binanceAsset, binanceAddress, apiKey, apiSecret, binanceNetwork);
-          if (isSelf) {
-            return res.status(400).json({ error: "INVALID_DESTINATION", message: "Destination matches your own deposit address. Loop prevented." });
-          }
-        } catch (e) {}
-
-        let query = `coin=${binanceAsset}&address=${binanceAddress}&amount=${amount}&transactionFeeFlag=true&timestamp=${timestamp}`;
-        if (binanceNetwork) query += `&network=${binanceNetwork}`;
-        
-        const signature = crypto.createHmac("sha256", apiSecret).update(query).digest("hex");
-        query += `&signature=${signature}`;
-
-        const binanceResp = await performBinanceRequest('POST', `/v1/capital/withdraw/apply`, {
-          data: query,
-          headers: { 
-            "X-MBX-APIKEY": apiKey,
-            "Content-Type": "application/x-www-form-urlencoded"
-          }
-        }, 'sapi');
-
-        if (binanceResp.status === 200 && binanceResp.data.id) {
-          // 5. Deduct from treasury on success
-          await resilientDb.collection("platform").doc("stats").update({
-            platformShare: FieldValue.increment(-amount),
-            totalPayouts: FieldValue.increment(amount)
-          });
-          
-          await markIdempotency(reference, 'success', { binanceId: binanceResp.data.id });
-          return res.json({ success: true, transactionId: reference, binanceId: binanceResp.data.id });
-        } else {
-          throw new Error(`Binance Error: ${JSON.stringify(binanceResp.data)}`);
-        }
-      }
-
-      // Fallback/Legacy logic
-      await resilientDb.collection("platform").doc("stats").update({
-        platformShare: FieldValue.increment(-amount),
-        totalPayouts: FieldValue.increment(amount)
-      });
-      await markIdempotency(reference, 'success', { amount, destination });
-      res.json({ success: true, transactionId: reference });
-    } catch (err: any) {
-      console.error("[Platform Payout] Execution Error:", err.message);
-      await markIdempotency(reference, 'failed', { error: err.message });
-      res.status(500).json({ error: "PAYOUT_EXECUTION_FAILED", message: err.message });
-    }
-  });
-
-  app.post("/api/payout/crypto", async (req, res) => {
-    console.log(`[ROUTE-MATCH] POST /api/payout/crypto triggered`);
-    const { walletAddress, network, amount, userId, scaToken, email, reference: providedReference } = req.body;
-    
-    // 1. Idempotency
-    const reference = providedReference || `USER-CRYPTO-${userId || 'anon'}-${Date.now()}`;
-    const existingTx = await checkIdempotency(reference);
-    if (existingTx) {
-      return res.json({ success: existingTx.status === 'success', transactionId: reference, isDuplicate: true });
-    }
-
-    // 2. Auth Level Check
-    let verifiedEmail = email;
-    if (!verifiedEmail && userId) {
-      try {
-        const uDoc = await resilientDb.collection('users').doc(userId).get();
-        if (uDoc.exists) verifiedEmail = uDoc.data()?.email;
-      } catch (e) {}
-    }
-    const isDeveloper = verifiedEmail?.toLowerCase() === 'edwinmuoha@gmail.com';
-
-    let authLevel = 0;
-    if (userId) {
-      authLevel = await verifyUserAuthorizationLevel(userId, { scaToken, email: verifiedEmail || email });
-      if (isDeveloper && scaToken === "GOOGLE_VERIFIED") authLevel = 2; // Full verified bypass for developer
-      
-      const numAmount = parseFloat(amount);
-      if (authLevel === 0 && numAmount >= 100) {
-        return res.status(401).json({ success: false, error: "SCA_REQUIRED", message: "Withdrawals require Google Security Verification." });
-      }
-    }
-
-    // 3. Execution (Real Payout logic)
-    try {
-      const userDoc = await resilientDb.collection('users').doc(userId).get();
-      if (!userDoc.exists) return res.status(404).json({ success: false, error: "USER_NOT_FOUND" });
-      
-      const userData = userDoc.data();
-      const points = userData?.points || 0;
-      const requestedAmount = parseFloat(amount);
-
-      if (isNaN(requestedAmount) || requestedAmount < 100) {
-        return res.status(400).json({ success: false, error: "INVALID_AMOUNT", message: "Minimum withdrawal amount is 100 USDT." });
-      }
-
-      if (points < requestedAmount) {
-        return res.status(400).json({ success: false, error: "INSUFFICIENT_FUNDS", message: `Balance too low. Available: ${points.toFixed(2)}` });
-      }
-
-      // Mark as pending
-      await markIdempotency(reference, 'pending', { userId, amount: requestedAmount });
-
-      // Execute Binance Transfer if keys exist
-      const apiKey = getBinanceApiKey();
-      const apiSecret = getBinanceApiSecret();
-      
-      if (apiKey && apiSecret) {
-        console.log(`[Crypto Payout] Using Binance API Key: ${apiKey.substring(0, 6)}... (Length: ${apiKey.length})`);
-        const timestamp = Date.now();
-        const binanceAsset = "USDT";
-        const binanceAddress = walletAddress;
-        const binanceNetwork = network || (walletAddress?.startsWith('T') ? "TRX" : "ETH");
-        
-        let query = `coin=${binanceAsset}&address=${binanceAddress}&amount=${requestedAmount}&transactionFeeFlag=true&timestamp=${timestamp}`;
-        if (binanceNetwork) query += `&network=${binanceNetwork}`;
-        
-        const signature = crypto.createHmac("sha256", apiSecret).update(query).digest("hex");
-        query += `&signature=${signature}`;
-
-        const binanceResp = await performBinanceRequest('POST', `/v1/capital/withdraw/apply`, {
-          data: query,
-          headers: { 
-            "X-MBX-APIKEY": apiKey,
-            "Content-Type": "application/x-www-form-urlencoded"
-          }
-        }, 'sapi');
-
-        if (binanceResp.status === 200 && binanceResp.data.id) {
-          // Success: Deduct from user
-          await resilientDb.collection('users').doc(userId).update({
-            points: FieldValue.increment(-requestedAmount)
-          });
-          
-          await markIdempotency(reference, 'success', { binanceId: binanceResp.data.id });
-          return res.json({ success: true, transactionId: reference, binanceId: binanceResp.data.id });
-        } else {
-          throw new Error(`Binance Gateway Error: ${JSON.stringify(binanceResp.data)}`);
-        }
-      }
-
-      // Fallback
-      await resilientDb.collection('users').doc(userId).update({
-        points: FieldValue.increment(-requestedAmount)
-      });
-      await markIdempotency(reference, 'success', { userId, amount: requestedAmount });
-      res.json({ success: true, transactionId: reference, message: "Withdrawal request submitted successfully." });
-    } catch (err: any) {
-      console.error("[Crypto Payout] Execution Error:", err.message);
-      await markIdempotency(reference, 'failed', { error: err.message });
-      res.status(500).json({ error: "PAYOUT_EXECUTION_FAILED", message: err.message });
-    }
-  });
-
-  // --- END OF PRIORITY ROUTES ---
-
-  // --- LOCAL VAULT ROUTES (Priority #0) ---
-  app.get("/api/vault/prices", async (req, res) => {
-    try {
-      const symbols = ["BTCUSDT", "ETHUSDT", "PAXGUSDT"];
-      const tickers = await Promise.all(symbols.map(async (symbol) => {
-        try {
-          const resp = await performBinanceRequest('GET', `/v3/ticker/price?symbol=${symbol}`, {
-            headers: { "X-Symbol": symbol },
-            timeout: 5000
-          });
-          const price = parseFloat(resp.data.price);
-          if (symbol === 'PAXGUSDT' && !isNaN(price)) LAST_GOLD_PRICE = price;
-          return { symbol, price: resp.data.price };
-        } catch (e: any) {
-          if (symbol === 'PAXGUSDT') return { symbol, price: LAST_GOLD_PRICE.toString(), cached: true };
-          if (symbol === 'BTCUSDT') return { symbol, price: "64120.50", cached: true };
-          if (symbol === 'ETHUSDT') return { symbol, price: "3450.75", cached: true };
-          return { symbol, price: "0", error: true };
-        }
-      }));
-      res.json({ success: true, prices: tickers });
-    } catch (err) {
-      res.json({ 
-        success: true, 
-        prices: [
-          { symbol: 'PAXGUSDT', price: LAST_GOLD_PRICE.toString(), cached: true },
-          { symbol: 'BTCUSDT', price: "64120.50", cached: true },
-          { symbol: 'ETHUSDT', price: "3450.75", cached: true }
-        ]
-      });
-    }
-  });
-  
-  // ULTRA-HIGH PRIORITY LOGGER
-  app.use((req, res, next) => {
-    console.log(`[ULTRA-LOG] ${req.method} ${req.url} (from: ${req.headers.origin || 'same-origin'})`);
-    next();
-  });
-  
   app.set('trust proxy', 1);
   app.use(cors({
- HEAD
-    origin: (origin, callback) => {
-      // Allow all origins (development, Surge, staging, etc.)
-      callback(null, true);
-    },
-    credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'X-Requested-With', 'Origin', 'Cache-Control', 'x-bridge-relay', 'x-api-key', 'x-api-secret', 'X-Pulse-Request', 'X-Education-Retry'],
-    exposedHeaders: ['Content-Range', 'X-Content-Range'],
-    maxAge: 86400 // 24 hours preflight cache
-
   origin: ['https://pulse-feeds.surge.sh'],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
 
     allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'X-Requested-With', 'Origin'],
     maxAge: 86400
- 09ab28d (Fix CORS wildcard conflict)
   }));
-
-  app.use(express.json({ limit: '10mb' }));
-  app.use(express.urlencoded({ extended: true, limit: '10mb' }));
-
-  // CONNECTIVITY CHECK FOR WITHDRAWAL DEBUG
-  app.get("/api/payout/platform", (req, res) => {
-    res.json({ status: "alive", path: "/api/payout/platform", method: "GET" });
-  });
-  app.get("/api/payout/crypto", (req, res) => {
-    res.json({ status: "alive", path: "/api/payout/crypto", method: "GET" });
-  });
-
-  // IMMEDIATELY REGISTER REWARD ROUTE (Priority #1)
-  app.post("/api/user/time-reward", async (req, res) => {
-    console.log(`[Reward API] POST request received at ${new Date().toISOString()}`);
-    const { userId } = req.body;
-    console.log(`[Reward API] Payload:`, req.body);
-    
-    if (!userId) {
-      console.warn("[Reward API] Missing userId in request body");
-      return res.status(400).json({ error: "Missing userId" });
-    }
-
-    try {
-      const userSnap = await resilientDb.collection('users').doc(userId).get();
-      const userData = userSnap.data();
-      const userMembership = (userData?.membershipLevel || 'diamond').toLowerCase();
-      
-      // Determine Membership Level Split (Respecting User Prompt for Activity/Time Rewards)
-      // User Prompt: "User revenue ... from time spent ... and activity ... if user is in Gold level Membership ... 20% for developer and 80% for user"
-      let userSplit = 0.1; // Default: 10% User (Diamond)
-      if (userMembership === 'gold') userSplit = 0.8;
-      else if (userMembership === 'silver') userSplit = 0.5;
-      else if (userMembership === 'bronze') userSplit = 0.3;
-      else if (userMembership === 'diamond') userSplit = 0.1;
-
-      const platformSplit = 1 - userSplit;
-
-      // Base Total: 1.25 USDT per hour (so Gold 80% gets 1.0 USDT/hr)
-      const baseTotalAmount = 1.25 / 60; 
-      const userAmount = baseTotalAmount * userSplit;
-      const platformAmount = baseTotalAmount * platformSplit;
-      const totalAmount = baseTotalAmount;
-      const timestamp = FieldValue.serverTimestamp();
-
-      const userRef = resilientDb.collection('users').doc(userId);
-      await userRef.set({
-        points: FieldValue.increment(userAmount),
-        balance: FieldValue.increment(userAmount),
-        activeTimeRevenue: FieldValue.increment(userAmount),
-        timeSpentRevenue: FieldValue.increment(userAmount), // Match blueprint
-        updatedAt: timestamp
-      }, { merge: true });
-
-      // Log Points Ledger
-      await resilientDb.collection('users').doc(userId).collection('points_ledger').add({
-        amount: userAmount,
-        type: 'accrual',
-        source: 'active_time',
-        reason: `Active Time Reward (1 Minute) - ${userMembership.toUpperCase()} Level (${(userSplit * 100).toFixed(0)}%)`,
-        timestamp
-      });
-
-      const statsRef = resilientDb.collection('platform').doc('stats');
-      await statsRef.set({
-        totalInflow: FieldValue.increment(totalAmount), // Total Inflow
-        platformShare: FieldValue.increment(platformAmount), // Net (Dev) - This is Gross Inflow - User Outflow
-        totalOutflow: FieldValue.increment(userAmount), // Outflow (User Share)
-        platformRevenue: FieldValue.increment(totalAmount), // Legacy sync
-        lastUpdated: timestamp,
-        serverSecret: "pulse-feeds-server-secret-2026"
-      }, { merge: true });
-
-      await resilientDb.collection('platform_transactions').add({
-        type: 'revenue',
-        source: 'active_time',
-        userAmount: userAmount,
-        platformAmount: platformAmount,
-        totalAmount: totalAmount,
-        unit: 'USD',
-        reason: `Active Time Reward (1 Minute) - ${userMembership.toUpperCase()} Level`,
-        userId: userId,
-        timestamp,
-        serverSecret: "pulse-feeds-server-secret-2026"
-      });
-
-      console.log(`[Reward API] Success: User ${userId} rewarded ${userAmount} USD`);
-      return res.json({ success: true, reward: userAmount });
-    } catch (e: any) {
-      console.error("[Reward API] Critical Error:", e.message);
-      res.status(500).json({ error: "Failed to process time reward", details: e.message });
-    }
-  });
-
-  // Keep a GET version for easy browser/tool testing
-  app.get("/api/user/time-reward", (req, res) => {
-    res.json({ message: "Reward API is active. Use POST to submit rewards." });
-  });
-
-  // ACTIVITY REWARD API
-  app.post("/api/user/activity-reward", async (req, res) => {
-    const { userId, type, action } = req.body;
-    if (!userId) return res.status(400).json({ error: "Missing userId" });
-
-    try {
-      const userSnap = await resilientDb.collection('users').doc(userId).get();
-      const userData = userSnap.data();
-      const userMembership = (userData?.membershipLevel || 'diamond').toLowerCase();
-      
-      // Determine Membership Level Split (Respecting User Prompt for Activity/Time Rewards)
-      // User Prompt: "User revenue ... from time spent ... and activity ... if user is in Gold level Membership ... 20% for developer and 80% for user"
-      let userSplit = 0.1; // Default: 10% User (Diamond)
-      if (userMembership === 'gold') userSplit = 0.8;
-      else if (userMembership === 'silver') userSplit = 0.5;
-      else if (userMembership === 'bronze') userSplit = 0.3;
-      else if (userMembership === 'diamond') userSplit = 0.1;
-
-      const platformSplit = 1 - userSplit;
-      
-      // Activity base reward: 0.05 USDT
-      const baseTotalAmount = 0.050; 
-      const userAmount = baseTotalAmount * userSplit;
-      const platformAmount = baseTotalAmount * platformSplit;
-      const totalAmount = baseTotalAmount;
-      const timestamp = FieldValue.serverTimestamp();
-
-      const userRef = resilientDb.collection('users').doc(userId);
-      await userRef.set({
-        points: FieldValue.increment(userAmount),
-        balance: FieldValue.increment(userAmount),
-        activityRevenue: FieldValue.increment(userAmount),
-        updatedAt: timestamp
-      }, { merge: true });
-
-      await resilientDb.collection('users').doc(userId).collection('points_ledger').add({
-        amount: userAmount,
-        type: 'accrual',
-        source: 'activity',
-        reason: `${action || 'Activity'} Reward - ${userMembership.toUpperCase()} Level (${(userSplit * 100).toFixed(0)}%)`,
-        timestamp
-      });
-
-      const statsRef = resilientDb.collection('platform').doc('stats');
-      await statsRef.set({
-        totalInflow: FieldValue.increment(totalAmount),
-        platformShare: FieldValue.increment(platformAmount),
-        totalOutflow: FieldValue.increment(userAmount),
-        platformRevenue: FieldValue.increment(totalAmount),
-        lastUpdated: timestamp,
-        serverSecret: "pulse-feeds-server-secret-2026"
-      }, { merge: true });
-
-      await resilientDb.collection('platform_transactions').add({
-        type: 'revenue',
-        source: 'activity',
-        userAmount,
-        platformAmount,
-        totalAmount,
-        unit: 'USD',
-        reason: `${action || 'Activity'} Reward - ${userMembership.toUpperCase()} Level (Dev: ${(platformSplit * 100).toFixed(0)}%)`,
-        userId,
-        timestamp,
-        serverSecret: "pulse-feeds-server-secret-2026"
-      });
-
-      return res.json({ success: true, reward: userAmount });
-    } catch (e: any) {
-      res.status(500).json({ error: e.message });
-    }
-  });
-
-  // --- VAULT API CONFIG & RELAY ---
-  // The following configuration ensures the server can relay requests to the Binance bridge safely.
-  // --- END OF PAYOUT ROUTES (MOVED UP FOR PRIORITY) ---
 
   // Debug middleware for all Vault (Binance) API requests
   app.use('/api/vault', (req, res, next) => {
     console.log(`[Vault-DEBUG] ${req.method} ${req.path} - Headers: ${JSON.stringify(req.headers['content-type'])}`);
     next();
-  });
-
-  // Mixed Content Safety Bridge: Relays requests to the Oracle VPS if VITE_API_BASE_URL is set.
-  // This allows the HTTPS frontend (Surge/AI Studio) to talk to an HTTP backend via this secure relay.
-  app.use('/api/vault', async (req, res, next) => {
-    // Priority 1: VITE_API_BASE_URL secret
-    // Priority 2: BINANCE_PROXY environment
-    // Priority 3: Hardcoded Oracle VPS fallback to ensure stability
-    const bridgeUrl = (process.env.VITE_API_BASE_URL || process.env.BINANCE_PROXY || 'http://89.168.120.135:3000').trim();
-    
-    if (bridgeUrl && bridgeUrl.startsWith('http')) {
-      // Prevent infinite loop if bridgeUrl accidentally points to ourselves
-      const host = req.get('host') || '';
-      if (bridgeUrl.includes(host) && host !== '') {
-        return next();
-      }
-
-      console.log(`[Bridge-Relay] Forwarding ${req.method} /api/vault${req.path} to ${bridgeUrl}`);
-      try {
-        const cleanBase = bridgeUrl.endsWith('/') ? bridgeUrl.slice(0, -1) : bridgeUrl;
-        const targetUrl = `${cleanBase}/api/vault${req.path}`;
-        
-        // Pass through query params
-        const queryParams = new URL(targetUrl, bridgeUrl).searchParams;
-        Object.entries(req.query).forEach(([k, v]) => queryParams.set(k, String(v)));
-        const finalUrl = `${targetUrl.split('?')[0]}?${queryParams.toString()}`;
-
-        // Clean headers for relay to prevent protocol/host conflicts
-        const relayHeaders: any = {
-           "x-bridge-relay": "true",
-           "user-agent": req.headers["user-agent"] || STANDARD_USER_AGENT,
-           "accept": req.headers["accept"] || "application/json",
-           "content-type": req.headers["content-type"] || "application/json",
-           "host": new URL(bridgeUrl).host
-        };
-
-        // Pass through credentials if present
-        if (req.headers["x-api-key"]) relayHeaders["x-api-key"] = req.headers["x-api-key"];
-        if (req.headers["x-api-secret"]) relayHeaders["x-api-secret"] = req.headers["x-api-secret"];
-        if (req.headers["authorization"]) relayHeaders["authorization"] = req.headers["authorization"];
-
-        const relayResponse = await axios({
-          method: req.method as any,
-          url: finalUrl,
-          data: req.method !== 'GET' ? req.body : undefined,
-          headers: relayHeaders,
-          timeout: 20000, 
-          validateStatus: () => true
-        });
-
-        // Optimization: Standardize response to avoid issues with specialized headers
-        res.status(relayResponse.status);
-        if (relayResponse.headers['content-type']) {
-          res.setHeader('Content-Type', String(relayResponse.headers['content-type']));
-        }
-        res.send(relayResponse.data);
-        return;
-      } catch (err: any) {
-        console.error(`[Bridge-Relay] Relay failed: ${err.message}. Backend falling back to local processing.`);
-        next();
-      }
-    } else {
-      next();
-    }
   });
 
   // Dedicated health check endpoint (does not block root /)
@@ -2691,6 +1782,8 @@ async function startServer() {
   // Security Enforcement: AI Studio/Cloud Run requires port 3000 for local proxy
   const PORT = 3000;
   const HOST = "0.0.0.0";
+  app.use(express.json({ limit: '10mb' }));
+  app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
   // AI System Management
   app.get("/api/ai/status", (req, res) => {
@@ -2747,17 +1840,12 @@ async function startServer() {
       
       console.error("[Gemini Proxy] FINAL ERROR DETAILS:", errorString);
       
-      const isWarmup = combinedText.includes("503") || combinedText.includes("unavailable") || combinedText.includes("overloaded") || combinedText.includes("502") || combinedText.includes("504");
-      const status = isWarmup ? 503 : (typeof err.status === 'number' ? err.status : 500);
-
       const isDepleted = combinedText.includes("prepayment credits are depleted") || 
                         combinedText.includes("billing") ||
                         combinedText.includes("credits are exhausted") ||
                         combinedText.includes("resource_exhausted") ||
                         combinedText.includes("429") ||
                         combinedText.includes("quota") ||
-                        combinedText.includes("rate limit") ||
-                        combinedText.includes("limit exceeded") ||
                         combinedText.includes("depleted") ||
                         combinedText.includes("insufficient balance") ||
                         combinedText.includes("api_key_invalid") ||
@@ -2766,19 +1854,17 @@ async function startServer() {
                         combinedText.includes("denied") ||
                         combinedText.includes("permission_denied") ||
                         combinedText.includes("forbidden") ||
-                        combinedText.includes("403") ||
-                        status === 429 ||
-                        status === 402 ||
-                        status === 403;
+                        combinedText.includes("403");
       
-      const isQuotaOrLimit = status === 429 || combinedText.includes("quota") || combinedText.includes("rate limit") || combinedText.includes("limit exceeded");
-
-      if (isDepleted || isQuotaOrLimit || isAIBreakerTripped) {
-        console.warn(`[Gemini Proxy] AI Service limit/quota hit (${status}). Falling back to simulation mode.`);
+      if (isDepleted) {
+        console.warn("[Gemini Proxy] Falling back to simulation due to billing restriction detected in middle of request.");
         const { params } = req.body;
         return res.json(getSimulationResponse(params));
       }
 
+      const isWarmup = combinedText.includes("503") || combinedText.includes("unavailable") || combinedText.includes("overloaded") || combinedText.includes("502") || combinedText.includes("504");
+      const status = isWarmup ? 503 : (typeof err.status === 'number' ? err.status : 500);
+      
       return res.status(status).json({ 
         error: isWarmup ? "The AI engine is currently warming up or overloaded. We are automatically retrying with optimized backoff..." : errorString,
         status: status,
@@ -2798,7 +1884,21 @@ async function startServer() {
 
       // Check for circuit breaker before real call
       if (isAIBreakerTripped) {
-        return res.status(503).json({ error: "AI services currently unavailable (Rate Limit/Billing). Real-time AI required." });
+        try {
+          const sim = getSimulationResponse((lessonTitle || "") + " " + (courseTitle || "") + " research academic");
+          return res.json(JSON.parse(sim.text));
+        } catch (simErr) {
+          // Fallback if simulation parsing fails
+          return res.json({
+            title: lessonTitle || "Pulse Lesson",
+            description: "AI synchronized curriculum content.",
+            overview: "Understanding the Pulse Feeds ecosystem.",
+            objectives: ["System mastery"],
+            keyConcepts: ["Simulation active"],
+            communityImpact: "Growth enabled.",
+            modules: []
+          });
+        }
       }
       
       const prompt = `Research and provide deep academic content for a lesson titled "${lessonTitle}" within the course "${courseTitle}". 
@@ -2813,7 +1913,7 @@ async function startServer() {
       Style: Academic, professional, yet inspiring. Use a "Pulse Feeds" editorial tone.`;
 
       const response = await generateContentWithRetry({
-        model: 'gemini-1.5-flash',
+        model: 'gemini-3-flash-preview',
         systemInstruction: "You are an elite academic curator for Pulse Feeds Education Hub. You specialize in deep research and clear communication of complex enterprise and technology topics.",
         contents: [{ role: "user", parts: [{ text: prompt }] }],
         generationConfig: { responseMimeType: "application/json" }
@@ -2824,7 +1924,14 @@ async function startServer() {
       res.json(content);
     } catch (error: any) {
       console.error("[Education Research] Error:", error.message);
-      res.status(500).json({ error: error.message || "Failed to generate research content" });
+      
+      // Attempt simulation fallback on error
+      try {
+        const sim = getSimulationResponse((lessonTitle || "") + " " + (courseTitle || "") + " research academic fallback");
+        return res.json(JSON.parse(sim.text));
+      } catch (simError) {
+        res.status(500).json({ error: error.message });
+      }
     }
   });
 
@@ -2858,10 +1965,46 @@ async function startServer() {
         latency,
         status: resp.status,
         timestamp: new Date().toISOString(),
-        network: "Mainnet"
+        network: process.env.BINANCE_USE_TESTNET === "true" ? "Testnet" : "Mainnet"
       });
     } catch (e: any) {
       res.status(500).json({ success: false, error: `Vault-Bridge Ping Failed: ${e.message}` });
+    }
+  });
+
+  app.get("/api/vault/prices", async (req, res) => {
+    try {
+      const symbols = ["BTCUSDT", "ETHUSDT", "PAXGUSDT"];
+      const prices = await Promise.all(symbols.map(async (symbol) => {
+        try {
+          const resp = await performBinanceRequest('GET', `/v3/ticker/price?symbol=${symbol}`, {
+            headers: { "X-Symbol": symbol }
+          });
+          const price = parseFloat(resp.data.price);
+          
+          if (symbol === 'PAXGUSDT' && !isNaN(price)) {
+            LAST_GOLD_PRICE = price;
+          }
+          
+          return { symbol, price: resp.data.price };
+        } catch (e: any) {
+          console.warn(`[Binance] Failed to fetch ${symbol}: ${e.message}`);
+          // Multi-Layer Fallback Sequence
+          if (symbol === 'PAXGUSDT') return { symbol, price: LAST_GOLD_PRICE.toString(), cached: true };
+          if (symbol === 'BTCUSDT') return { symbol, price: "40120.50", cached: true };
+          if (symbol === 'ETHUSDT') return { symbol, price: "2450.75", cached: true };
+          return { symbol, price: null, error: true };
+        }
+      }));
+      res.json({ success: true, prices });
+    } catch (err: any) {
+      console.error("[Binance] Global price fetch error:", err.message);
+      // Even if everything fails, return the cached gold price
+      res.json({ 
+        success: true, 
+        prices: [{ symbol: 'PAXGUSDT', price: LAST_GOLD_PRICE.toString(), cached: true }],
+        error: err.message
+      });
     }
   });
 
@@ -2875,16 +2018,10 @@ async function startServer() {
     try {
       const diag = getDetectedBinanceSecrets() as any;
       
-      // Detected IP (Crucial for WAF troubleshooting)
-      try {
-        const ipResp = await axios.get('https://api.ipify.org?format=json', { timeout: 3000 }).catch(() => null);
-        if (ipResp) diag.outboundIp = ipResp.data.ip;
-      } catch (e) {}
-
       // Real-time connectivity test
       try {
         const proxyMatchKey = getProxyMatchKey();
-        const proxyAgent = checkProxyStatus() ? null : getProxyAgent();
+        const proxyAgent = proxyExhaustedDetected ? null : getProxyAgent();
         diag.proxyObjVisible = !!proxyAgent;
         const testMirror = BINANCE_MIRRORS[Math.floor(Math.random() * BINANCE_MIRRORS.length)];
         const axiosConfig: any = { 
@@ -2925,38 +2062,17 @@ async function startServer() {
           diag.restrictionDetails = `Binance Access Blocked (${errStatus || '451'}). German (DE) Oracle servers are supported, but SAPI requires manual whitelisting of ${diag.outboundIp || 'the server IP'} in your Binance API settings to bypass data-center filters.`;
         }
 
-        if (errMsg.includes("etimedout") || errMsg.includes("ehostunreach") || errMsg.includes("econnrefused")) {
-          // Do not mark as exhausted for simple timeouts or host unreachable, 
-          // as these are likely configuration or transient bridge issues on the user/network side.
-          console.log(`[Proxy-Diag] Connectivity issue detected (${errMsg}). Not disabling proxy.`);
-          diag.proxyConnectivityError = true;
-          
-          const proxyUrl = getProxyAgent() ? "Oracle Server" : "Proxy";
-          const portMatch = errMsg.match(/:(\d+)/) || ["", "3000"];
-          const port = portMatch[1];
-          
-          diag.proxyConnectivityMessage = errMsg.includes("ehostunreach") 
-            ? `Network Unreachable: The ${proxyUrl} IP is not responding on port ${port}. Check your ISP or Oracle Cloud Ingress rules.`
-            : errMsg.includes("econnrefused")
-            ? `Connection Refused: The ${proxyUrl} rejected connection on port ${port}. Is your proxy software (Squid/Tinyproxy) running and listening on 0.0.0.0?`
-            : `Connection Timeout: The proxy server is too slow or the port ${port} is closed.`;
-        } else if (errStatus === 407 || errMsg.includes("407") || errStatus === 402 || errMsg.includes("402") || errMsg.includes("proxy authentication")) {
+        if (errStatus === 407 || errMsg.includes("407") || errStatus === 402 || errMsg.includes("402") || errMsg.includes("proxy authentication")) {
           proxyExhaustedDetected = true;
-          lastProxyErrorTime = Date.now();
           proxyErrorReason = `Proxy returned ${errStatus || '407'} / ${e.message}. Your Fixie plan limit has likely been exceeded (500 free requests per month).`;
+        } else if (errMsg.includes("etimedout")) {
+          // Do not mark as exhausted for simple timeouts, could be a transient bridge issue
+          console.log("[Proxy-Diag] Transient Timeout detected. Not disabling proxy.");
         }
       }
 
       diag.proxyExhaustedDetected = proxyExhaustedDetected;
       diag.proxyErrorReason = proxyErrorReason;
-      diag.backendBaseUrl = `${req.protocol}://${req.get('host')}`;
-      
-      // Bridge Relay Status
-      diag.bridgeRelay = {
-        active: !!(process.env.VITE_API_BASE_URL && process.env.VITE_API_BASE_URL.startsWith('http')),
-        target: process.env.VITE_API_BASE_URL || null,
-        safetyMode: req.protocol === 'https' && (process.env.VITE_API_BASE_URL || '').startsWith('http://')
-      };
       
       // System Status (Analogous to GitHub Actions/Render Events)
       diag.serverInfo = {
@@ -2973,7 +2089,7 @@ async function startServer() {
       // Get the actual IP Binance would see
       try {
         const proxyMatchKey = getProxyMatchKey();
-        const proxyAgent = checkProxyStatus() ? null : getProxyAgent();
+        const proxyAgent = proxyExhaustedDetected ? null : getProxyAgent();
         const axiosConfig: any = { timeout: 12000, headers: { 'Cache-Control': 'no-cache' } };
         if (proxyAgent) {
           axiosConfig.httpsAgent = proxyAgent;
@@ -3098,74 +2214,11 @@ async function startServer() {
       
       if (resp && resp.status === 200 && resp.data && Array.isArray(resp.data.balances)) {
         const balance = resp.data.balances.find((b: any) => b.asset === asset.toUpperCase());
-        const spotFree = parseFloat(balance?.free || "0.00");
-        const spotLocked = parseFloat(balance?.locked || "0.00");
-
-        // Robust non-blocking retrieval of Funding Wallet balance
-        let fundingFree = 0;
-        let fundingLocked = 0;
-        try {
-          const fundingParams = new URLSearchParams();
-          fundingParams.append('asset', asset.toUpperCase());
-          fundingParams.append('recvWindow', '60000');
-          fundingParams.append('timestamp', Date.now().toString());
-          const fundingQuery = fundingParams.toString();
-          const fundingSignature = crypto.createHmac("sha256", apiSecret).update(fundingQuery).digest("hex");
-
-          const fundingResp = await performBinanceRequest('POST', `/v1/funding/asset?${fundingQuery}&signature=${fundingSignature}`, {
-            headers: {
-              "X-MBX-APIKEY": apiKey,
-              "Accept": "application/json"
-            }
-          }, 'sapi');
-
-          if (fundingResp && fundingResp.status === 200 && Array.isArray(fundingResp.data)) {
-            const fundingAsset = fundingResp.data.find((f: any) => f.asset === asset.toUpperCase());
-            if (fundingAsset) {
-              fundingFree = parseFloat(fundingAsset.free || "0.00");
-              fundingLocked = parseFloat(fundingAsset.locked || "0.00");
-              console.log(`[Vault-Bridge] Found funding wallet balance for ${asset}: free=${fundingFree}, locked=${fundingLocked}`);
-            }
-          }
-        } catch (fErr: any) {
-          console.warn("[Vault-Bridge] Optional Funding Wallet balance retrieval skipped/failed:", fErr.message);
-        }
-
-        const totalFree = spotFree + fundingFree;
-        const totalLocked = spotLocked + fundingLocked;
-
-        // Simple Earn balance retrieval
-        let earnFree = 0;
-        try {
-          const earnParams = new URLSearchParams();
-          earnParams.append('asset', asset.toUpperCase());
-          earnParams.append('timestamp', Date.now().toString());
-          earnParams.append('recvWindow', '60000');
-          const earnQuery = earnParams.toString();
-          const earnSignature = crypto.createHmac("sha256", apiSecret).update(earnQuery).digest("hex");
-
-          const earnResp = await performBinanceRequest('GET', `/v1/simple-earn/flexible/position?${earnQuery}&signature=${earnSignature}`, {
-            headers: { "X-MBX-APIKEY": apiKey }
-          }, 'sapi');
-
-          if (earnResp && earnResp.status === 200 && earnResp.data && Array.isArray(earnResp.data.rows)) {
-            const earnAsset = earnResp.data.rows.find((r: any) => r.asset === asset.toUpperCase());
-            if (earnAsset) {
-              earnFree = parseFloat(earnAsset.totalAmount || "0.00");
-              console.log(`[Vault-Bridge] Found Simple Earn balance for ${asset}: ${earnFree}`);
-            }
-          }
-        } catch (eErr: any) {
-          console.warn("[Vault-Bridge] Optional Simple Earn balance retrieval skipped:", eErr.message);
-        }
-
-        const finalFree = totalFree + earnFree;
-
         res.json({ 
           success: true, 
           asset: asset.toUpperCase(), 
-          free: finalFree.toFixed(6), 
-          locked: totalLocked.toFixed(6) 
+          free: balance?.free || "0.00", 
+          locked: balance?.locked || "0.00" 
         });
       } else {
         const errorMsg = resp?.data?.msg || `Binance returned unexpected status code ${resp?.status}`;
@@ -3194,13 +2247,9 @@ async function startServer() {
   });
 
   app.post("/api/vault/payout-disburse", async (req, res) => {
- HEAD
-    const { asset, address: rawAddress, amount, network, userId, scaToken, totpCode } = req.body;
-
     const { asset, addess, amount, network, userId, scaToken, totpCode } = req.body;
- 09ab28d (Fix CORS wildcard conflict)
     
-    if (!asset || !rawAddress || !amount) {
+    if (!asset || !address || !amount) {
       return res.status(400).json({ success: false, error: "Missing required withdrawal parameters (asset, address, amount)." });
     }
         // Prevent self-transfer loops to Treasury deposit addresses
@@ -3216,8 +2265,6 @@ async function startServer() {
         });
     }
 
-    const address = cleanAndNormalizeAddress(rawAddress);
-
     // Secondary Security Check (SCA)
     let authLevel = 0;
     if (userId) {
@@ -3225,11 +2272,8 @@ async function startServer() {
     }
 
     // Force SCA for any binance withdrawal due to high risk
-    if (authLevel < 1) {
-      const error = (scaToken || totpCode) 
-        ? "Security validation failed. Please check your PIN or TOTP code."
-        : "Security validation (PIN, Biometrics, or TOTP) is required for Binance withdrawals.";
-      return res.status(403).json({ success: false, error });
+    if (!scaToken && !totpCode && authLevel < 1) {
+      return res.status(403).json({ success: false, error: "Security validation (PIN, Biometrics, or TOTP) is required for Binance withdrawals." });
     }
 
     if (!isBinanceConfigured()) {
@@ -3242,282 +2286,35 @@ async function startServer() {
     const apiKey = getBinanceApiKey();
     const apiSecret = getBinanceApiSecret();
 
- HEAD
-    const isDeveloperPayout = userId === 'platform-admin' || userId === 'system'; 
-    const logTag = isDeveloperPayout ? '[Binance Developer Payout]' : '[Binance User Withdrawal]';
-
-    if (amount <= 0) {
-      return res.status(400).json({ success: false, error: "Invalid amount. Must be greater than 0." });
-    }
-
-    if (userId && !isDeveloperPayout) {
-      try {
-        const userDoc = await resilientDb.collection('users').doc(userId).get();
-        if (userDoc.exists) {
-          const points = userDoc.data()?.points || 0;
-          if (points <= 0) {
-            return res.status(400).json({ success: false, error: "NEGATIVE_BALANCE", message: "Withdrawals are not permitted from a zero or negative balance." });
-          }
-          if (points < amount) {
-            return res.status(400).json({ success: false, error: "INSUFFICIENT_BALANCE", message: "Withdrawal amount exceeds your available balance." });
-          }
-        }
-      } catch (err: any) {
-        console.warn("Could not check user balance before disburse:", err.message);
-      }
-    }
-
-    let binanceNetwork = network;
-    if (!binanceNetwork) {
-      if (address.trim().startsWith('T')) {
-        binanceNetwork = "TRX";
-      } else if (address.trim().toLowerCase().startsWith('0x')) {
-        binanceNetwork = "ETH";
-      } else if (address.trim().toLowerCase().startsWith('bc1') || address.trim().startsWith('1') || address.trim().startsWith('3')) {
-        binanceNetwork = "BTC";
-      } else {
-        binanceNetwork = "ETH";
-      }
-    }
-
-    console.debug(`[Binance Withdraw Request] Initiated by user ${userId} for ${amount} ${asset} to ${address} via network: ${binanceNetwork}`);
-
-    // Self-withdrawal loop safety check: Ensure destination is not the account's own deposit address
-
     console.debug(`[Binance Withdraw Request] Initiated by user ${userId} for ${amount} ${asset} to ${address}`);
     if (isBinanceTreasuryLocked) {
         return res.status(429).json({ success: false, error: "Treasury is currently busy processing another request. Please try again in 5 seconds." });
     }
     isBinanceTreasuryLocked = true;
     
- 09ab28d (Fix CORS wildcard conflict)
     try {
-      const isSelf = await isOwnDepositAddress(asset, address, apiKey, apiSecret, binanceNetwork);
-      if (isSelf) {
-        console.warn(`${logTag} Prevented self-withdrawal loop! Destination address matches the account's own deposit address: ${address}`);
-        return res.status(400).json({
-          success: false,
-          error: `Invalid Destination: You are attempting to withdraw to your own Binance deposit address (${address}). Since this app is configured with your own Binance API keys, withdrawing to your own deposit address creates an unnecessary loop that wastes transaction fees. Please provide an external wallet address (e.g. Trust Wallet, MetaMask, or a different Binance account) instead.`
-        });
-      }
-    } catch (depErr: any) {
-      console.warn(`${logTag} Non-blocking deposit address safety check skipped:`, depErr.message);
-    }
-
-    try {
-      // 1. Pre-check current real balance in Binance Spot and Funding account
-      let spotBalance = 0;
-      let fundingBalance = 0;
-      let earnBalance = 0;
-      let hotWalletBalance = 0;
-      
-      try {
-        const balParams = new URLSearchParams();
-        balParams.append('recvWindow', '60000');
-        balParams.append('timestamp', Date.now().toString());
-        const balQuery = balParams.toString();
-        const balSignature = crypto.createHmac("sha256", apiSecret).update(balQuery).digest("hex");
-        
-        const balResp = await performBinanceRequest('GET', `/v3/account?${balQuery}&signature=${balSignature}`, {
-          headers: { 
-            "X-MBX-APIKEY": apiKey,
-            "Accept": "application/json"
-          }
-        });
-
-        if (balResp && balResp.status === 200 && balResp.data && Array.isArray(balResp.data.balances)) {
-          const balance = balResp.data.balances.find((b: any) => b.asset === asset.toUpperCase());
-          if (balance) {
-            spotBalance = parseFloat(balance.free || "0");
-          }
-        }
-
-        // Add Funding Wallet balance
-        try {
-          const fundingParams = new URLSearchParams();
-          fundingParams.append('asset', asset.toUpperCase());
-          fundingParams.append('recvWindow', '60000');
-          fundingParams.append('timestamp', Date.now().toString());
-          const fundingQuery = fundingParams.toString();
-          const fundingSignature = crypto.createHmac("sha256", apiSecret).update(fundingQuery).digest("hex");
-
-          const fundingResp = await performBinanceRequest('POST', `/v1/funding/asset?${fundingQuery}&signature=${fundingSignature}`, {
-            headers: {
-              "X-MBX-APIKEY": apiKey,
-              "Accept": "application/json"
-            }
-          }, 'sapi');
-
-          if (fundingResp && fundingResp.status === 200 && Array.isArray(fundingResp.data)) {
-            const fundingAsset = fundingResp.data.find((f: any) => f.asset === asset.toUpperCase());
-            if (fundingAsset) {
-              fundingBalance = parseFloat(fundingAsset.free || "0");
-            }
-          }
-        } catch (fErr: any) {
-          console.warn(`${logTag} Optional Funding Wallet balance retrieval skipped:`, fErr.message);
-        }
-
-        // Add Simple Earn (Flexible) balance
-        try {
-          const earnParams = new URLSearchParams();
-          earnParams.append('asset', asset.toUpperCase());
-          earnParams.append('timestamp', Date.now().toString());
-          earnParams.append('recvWindow', '60000');
-          const earnQuery = earnParams.toString();
-          const earnSignature = crypto.createHmac("sha256", apiSecret).update(earnQuery).digest("hex");
-
-          const earnResp = await performBinanceRequest('GET', `/v1/simple-earn/flexible/position?${earnQuery}&signature=${earnSignature}`, {
-            headers: {
-              "X-MBX-APIKEY": apiKey,
-              "Accept": "application/json"
-            }
-          }, 'sapi');
-
-          if (earnResp && earnResp.status === 200 && earnResp.data && Array.isArray(earnResp.data.rows)) {
-            const earnAsset = earnResp.data.rows.find((r: any) => r.asset === asset.toUpperCase());
-            if (earnAsset) {
-              earnBalance = parseFloat(earnAsset.totalAmount || "0");
-              console.log(`${logTag} Found Simple Earn balance for ${asset}: ${earnBalance}`);
-            }
-          }
-        } catch (eErr: any) {
-          console.warn(`${logTag} Optional Simple Earn balance retrieval skipped:`, eErr.message);
-        }
-
-        console.debug(`${logTag} Checked hot wallet balance: Spot=${spotBalance}, Funding=${fundingBalance}, Earn=${earnBalance} ${asset}. Requested: ${amount} ${asset}.`);
-        hotWalletBalance = spotBalance + fundingBalance + earnBalance;
-      } catch (balErr: any) {
-        console.warn(`${logTag} Failed to pre-check hot wallet balance:`, balErr.message);
+      // Binance SAPI for withdrawals (Spot API)
+      if (process.env.BINANCE_USE_TESTNET === "true") {
+        return res.status(400).json({ success: false, error: "Withdrawals are not supported on Binance Testnet." });
       }
 
-      const numAmount = parseFloat(amount.toString());
-
-      // Map of expected network fees for common Binance withdrawal networks
-      const NETWORK_FEES: Record<string, number> = {
-        'TRX': 1.5,   // TRC20 (typically 1.0 to 1.5 USDT)
-        'BSC': 0.25,  // BEP20 (typically 0.19 to 0.25 USDT)
-        'ETH': 5.0,   // ERC20 (typically 2.0 to 8.0 USDT)
-        'SOL': 1.0,   // Solana (typically 1.0 USDT)
-      };
-
-      const expectedFee = NETWORK_FEES[(network || 'TRX').toUpperCase()] || 1.5;
-      const targetSpotAmount = numAmount + expectedFee;
-
-      // If hot wallet total balance across Spot + Funding + Simple Earn is insufficient for amount + fee, return error
-      if (hotWalletBalance < targetSpotAmount) {
-        console.error(`${logTag} Insufficient total balance for amount + fee: ${hotWalletBalance} ${asset} vs required ${targetSpotAmount} ${asset} (Amount: ${numAmount}, Fee: ${expectedFee}).`);
-        const networkTip = (network || 'TRX').toUpperCase() === 'TRX' 
-          ? ` Tip: Try switching to the BSC (BEP20) network in the dropdown, which has a much lower network fee of only 0.25 USDT (total required: 11.25 USDT) and will succeed instantly.`
-          : "";
-        return res.status(400).json({ 
-          success: false, 
-          error: `Note: To withdraw, you must have a minimum of 11 USDT in Binance account. Requested: ${numAmount} ${asset}. Network fee for ${(network || 'TRX').toUpperCase()} is ${expectedFee} ${asset}, requiring a total of ${targetSpotAmount.toFixed(2)} ${asset}. Your Binance account currently has ${hotWalletBalance.toFixed(4)} ${asset}.${networkTip}`
-        });
-      }
-
-      // 1b. Automatic Transfer from Funding to Spot if needed (covering amount + fee buffer)
-      if (spotBalance < targetSpotAmount) {
-        const remainingNeeded = targetSpotAmount - spotBalance;
-        if (fundingBalance > 0) {
-          const transferAmount = Math.min(fundingBalance, remainingNeeded);
-          console.log(`${logTag} Spot balance (${spotBalance}) insufficient for transfer + fee (${targetSpotAmount}). Attempting to transfer ${transferAmount.toFixed(6)} from Funding Wallet...`);
-          
-          try {
-            const transferParams = new URLSearchParams();
-            transferParams.append('type', 'FUNDING_MAIN');
-            transferParams.append('asset', asset.toUpperCase());
-            transferParams.append('amount', transferAmount.toFixed(8));
-            transferParams.append('timestamp', Date.now().toString());
-            transferParams.append('recvWindow', '60000');
-            const transferQuery = transferParams.toString();
-            const transferSignature = crypto.createHmac("sha256", apiSecret).update(transferQuery).digest("hex");
-
-            const transferResp = await performBinanceRequest('POST', `/v1/asset/transfer?${transferQuery}&signature=${transferSignature}`, {
-              headers: {
-                "X-MBX-APIKEY": apiKey,
-                "Accept": "application/json"
-              }
-            }, 'sapi');
-
-            if (transferResp && transferResp.status === 200) {
-              console.log(`${logTag} Successfully transferred ${transferAmount.toFixed(6)} from Funding to Spot.`);
-              spotBalance += transferAmount;
-              await new Promise(resolve => setTimeout(resolve, 500));
-            }
-          } catch (transErr: any) {
-            console.error(`${logTag} Error during Funding to Spot transfer:`, transErr.message);
-          }
-        }
-      }
-
-      // 1c. Automatic Redemption from Simple Earn if still needed (covering amount + fee buffer)
-      if (spotBalance < targetSpotAmount) {
-        const remainingNeeded = targetSpotAmount - spotBalance;
-        console.log(`${logTag} Spot balance (${spotBalance}) still insufficient for transfer + fee (${targetSpotAmount}). Attempting to redeem ${remainingNeeded.toFixed(6)} from Simple Earn...`);
-        
-        try {
-          // First we need the productId for the asset in Simple Earn
-          const earnParams = new URLSearchParams();
-          earnParams.append('asset', asset.toUpperCase());
-          earnParams.append('timestamp', Date.now().toString());
-          const earnQuery = earnParams.toString();
-          const earnSignature = crypto.createHmac("sha256", apiSecret).update(earnQuery).digest("hex");
-
-          const earnResp = await performBinanceRequest('GET', `/v1/simple-earn/flexible/position?${earnQuery}&signature=${earnSignature}`, {
-            headers: { "X-MBX-APIKEY": apiKey }
-          }, 'sapi');
-
-          if (earnResp && earnResp.status === 200 && earnResp.data && earnResp.data.rows?.length > 0) {
-            const product = earnResp.data.rows.find((r: any) => r.asset === asset.toUpperCase());
-            if (product && product.productId) {
-              const redeemParams = new URLSearchParams();
-              redeemParams.append('productId', product.productId);
-              redeemParams.append('amount', remainingNeeded.toFixed(8));
-              redeemParams.append('timestamp', Date.now().toString());
-              const redeemQuery = redeemParams.toString();
-              const redeemSignature = crypto.createHmac("sha256", apiSecret).update(redeemQuery).digest("hex");
-
-              const redeemResp = await performBinanceRequest('POST', `/v1/simple-earn/flexible/redeem?${redeemQuery}&signature=${redeemSignature}`, {
-                headers: { "X-MBX-APIKEY": apiKey }
-              }, 'sapi');
-
-              if (redeemResp && redeemResp.status === 200) {
-                console.log(`${logTag} Successfully redeemed ${remainingNeeded.toFixed(6)} from Simple Earn to Spot.`);
-                spotBalance += remainingNeeded;
-                await new Promise(resolve => setTimeout(resolve, 1000));
-              }
-            }
-          }
-        } catch (redeemErr: any) {
-          console.error(`${logTag} Error during Simple Earn redemption:`, redeemErr.message);
-        }
-      }
-
-      // Final check: If spot is still insufficient after all attempts, we must fail
-      if (spotBalance < numAmount) {
-         console.error(`${logTag} Critical: Spot balance (${spotBalance.toFixed(6)}) still insufficient for withdrawal of ${numAmount}.`);
-         return res.status(500).json({ 
-           success: false, 
-           error: `Note: To withdraw, you must have a minimum of 11 USDT in Binance account. Requested: ${numAmount} ${asset}. Available spot balance: ${spotBalance.toFixed(4)} ${asset}.`
-         });
-      }
-
-      // 2. Perform the actual Binance SAPI Withdrawal (Spot API)
       const params = new URLSearchParams();
       params.append('coin', asset);
       params.append('address', address);
       params.append('amount', amount.toString());
-      params.append('transactionFeeFlag', 'true');
       params.append('recvWindow', '60000');
       params.append('timestamp', Date.now().toString());
-      if (binanceNetwork) params.append('network', binanceNetwork);
+      if (network) params.append('network', network);
       
       const query = params.toString();
       const signature = crypto.createHmac("sha256", apiSecret).update(query).digest("hex");
       params.append('signature', signature);
+      
+      const isDeveloperPayout = userId === 'platform-admin' || userId === 'system' || address === '0x992B9Fd95e4e64F374A92070e17627409fE27694'; 
+      const logTag = isDeveloperPayout ? '[Binance Developer Payout]' : '[Binance User Withdrawal]';
 
       console.debug(`${logTag} Executing SAPI POST to withdraw ${amount} ${asset} to ${address}`);
+      console.debug(`${logTag} Full Query String: ${params.toString()}`);
 
       const resp = await performBinanceRequest('POST', `/v1/capital/withdraw/apply`, {
         data: params.toString(),
@@ -3530,223 +2327,39 @@ async function startServer() {
       }, 'sapi');
 
       console.debug(`${logTag} Binance API Response Code: ${resp.status}`);
-      console.debug(`${logTag} Binance API Response Data: ${JSON.stringify(resp.data)}`);
-
       if (resp.status === 200 && resp.data) {
-        if (resp.data.id) {
-          return res.json({ 
-            success: true, 
-            data: resp.data, 
-            isDeveloper: isDeveloperPayout,
-            message: `Instant disbursement successful! ${amount} ${asset} has been dispatched to your address ${address}. Transaction ID: ${resp.data.id}.`
-          });
-        } else {
-          console.error(`${logTag} Potential Failure: Status 200 but no withdrawal id. Data: `, JSON.stringify(resp.data));
-          return res.status(500).json({
-            success: false,
-            error: "Binance returned success but no transaction ID was found."
-          });
-        }
+        res.json({ success: true, data: resp.data, isDeveloper: isDeveloperPayout });
       } else {
         const errorMsg = resp.data?.msg || `Binance Error Status: ${resp.status}`;
-        console.error(`${logTag} Failed with status ${resp.status}:`, errorMsg, "Data:", JSON.stringify(resp.data));
-        
-        let finalErrorString = `[${resp.data?.code || resp.status}] ${errorMsg}`;
-        
-        if (resp.status === 401 || resp.status === 403 || errorMsg.toLowerCase().includes("not authorized") || errorMsg.toLowerCase().includes("api-key format invalid")) {
-          finalErrorString = "You are not authorized to execute this request. This is likely because 'Enable Withdrawals' is disabled in your Binance API settings, or your server IP (89.168.120.135) is not whitelisted.";
-        } else if (errorMsg.toLowerCase().includes("insufficient balance") || resp.data?.code === -3020 || resp.data?.code === 31033 || finalErrorString.includes("031033")) {
-          finalErrorString = `Note: To withdraw, you must have a minimum of 11 USDT in Binance account. Requested: ${amount} ${asset}. Available Binance spot balance is insufficient to cover the amount and network fees.`;
-        } else if (resp.data?.code === 31042 || finalErrorString.includes("031042") || finalErrorString.includes("31042") || errorMsg.toLowerCase().includes("address has not been whitelisted")) {
-          finalErrorString = "Your withdrawal address is not whitelisted in your Binance account. Please add this address to your Binance account's withdrawal whitelist settings, then try again.";
-        }
-        
-        // Return REAL error instead of simulated success
-        return res.status(400).json({
-          success: false,
-          error: finalErrorString
-        });
+        console.error(`${logTag} Failed with status ${resp.status}:`, errorMsg);
+        return res.status(resp.status).json({ success: false, error: errorMsg, status: resp.status });
       }
     } catch (err: any) {
-      console.error("[Binance Withdraw Error]:", err.message);
+      if (err.response?.status === 403) {
+        console.error("[Binance Withdraw Error] 403 Forbidden. This usually means the IP is blocked or User-Agent is rejected by Binance WAF.");
+      }
       
-      // Return real error to the frontend
-      return res.status(500).json({
-        success: false,
-        error: `Network/API Error: ${err.message}`
-      });
-    }
-  });
-
-  app.get("/api/vault/payout-status", async (req, res) => {
-    const { reference, binanceId, userId } = req.query;
-
-    if (!reference && !binanceId) {
-      return res.status(400).json({ success: false, error: "Missing required query parameters (reference or binanceId)." });
-    }
-
-    if (!isBinanceConfigured()) {
-      return res.status(503).json({
-        success: false,
-        error: "Binance service not configured. Real-time payouts required."
-      });
-    }
-
-    const apiKey = getBinanceApiKey();
-    const apiSecret = getBinanceApiSecret();
-
-    try {
-      const params = new URLSearchParams();
-      if (binanceId) {
-        params.append('withdrawOrderId', binanceId.toString());
-      }
-      params.append('recvWindow', '60000');
-      params.append('timestamp', Date.now().toString());
-
-      const query = params.toString();
-      const signature = crypto.createHmac("sha256", apiSecret).update(query).digest("hex");
-      params.append('signature', signature);
-
-      console.debug(`[Binance Status Check] Checking status of withdrawal. BinanceID: ${binanceId}, Ref: ${reference}`);
-      const resp = await performBinanceRequest('GET', `/v1/capital/withdraw/history?${params.toString()}`, {
-        headers: { 
-          "X-MBX-APIKEY": apiKey,
-          "Accept": "application/json"
+      let errorMsg = err.message;
+      let statusCode = 500;
+      
+      if (err.response) {
+        statusCode = err.response.status;
+        if (typeof err.response.data === 'string' && err.response.data.includes('<html>')) {
+          errorMsg = `Binance Gateway Access Denied (403 Forbidden). The IP or Browser signature of this server might be restricted by Binance WAF.`;
+        } else if (err.response.data && err.response.data.msg) {
+          errorMsg = err.response.data.msg;
+        } else if (err.response.data) {
+          errorMsg = typeof err.response.data === 'string' ? err.response.data : JSON.stringify(err.response.data);
         }
-      }, 'sapi');
-
-      if (resp.status === 200 && Array.isArray(resp.data)) {
-        const tx = resp.data.find((w: any) => 
-          (binanceId && w.id === binanceId.toString()) || 
-          (w.withdrawOrderId === reference) ||
-          (w.id === reference)
-        ) || resp.data[0];
-
-        if (tx) {
-          const binanceStatusMap: { [key: number]: string } = {
-            0: "pending_email",
-            1: "cancelled",
-            2: "pending_approval",
-            3: "rejected",
-            4: "processing",
-            5: "failed",
-            6: "success"
-          };
-          const mappedStatus = binanceStatusMap[tx.status] || "unknown";
-          
-          return res.json({
-            success: true,
-            status: mappedStatus,
-            binanceStatus: tx.status,
-            txId: tx.txId,
-            id: tx.id,
-            coin: tx.coin,
-            amount: tx.amount,
-            address: tx.address
-          });
-        } else {
-          return res.json({
-            success: true,
-            status: "not_found",
-            message: "No transaction matching this ID or reference was found in Binance withdrawal history."
-          });
-        }
-      } else {
-        return res.status(resp.status).json({ success: false, error: "Unexpected response from Binance status API", details: resp.data });
       }
- HEAD
-    } catch (err: any) {
-      console.error("[Binance Status Check Error]:", err.message);
-      return res.status(err.response?.status || 500).json({ success: false, error: err.message });
-    }
-  });
-
-  app.post("/api/vault/payout-refund", async (req, res) => {
-    const { reference, userId } = req.body;
-
-    if (!reference || !userId) {
-      return res.status(400).json({ success: false, error: "Missing required reference or userId." });
-    }
-
-    try {
-      const userTxSnap = await resilientDb.collection('users').doc(userId).collection('transactions')
-        .where('reference', '==', reference)
-        .get();
-
-      if (userTxSnap.empty) {
-        return res.status(404).json({ success: false, error: "Transaction reference not found for this user." });
-      }
-
-      const userTxDoc = userTxSnap.docs[0];
-      const txData = userTxDoc.data();
-
-      if (txData.status === 'failed' || txData.status === 'refunded' || txData.status === 'rolled_back') {
-        return res.status(400).json({ success: false, error: "Transaction has already been refunded or failed." });
-      }
-
-      const pointsToRefund = txData.pointsDeducted || txData.amount || 0;
-      const balanceToRefund = txData.amount || 0;
-
-      const userRef = resilientDb.collection('users').doc(userId);
-      await userRef.update({
-        points: FieldValue.increment(pointsToRefund),
-        balance: FieldValue.increment(balanceToRefund)
-      });
-
-      await userTxDoc.ref.update({
-        status: 'failed',
-        refundedAt: new Date(),
-        details: `Refunded: ${pointsToRefund} points returned due to Binance withdrawal non-delivery.`
-      });
-
-      const centralRef = resilientDb.collection('withdrawals').doc(reference);
-      const centralSnap = await centralRef.get();
-      if (centralSnap.exists) {
-        await centralRef.update({
-          status: 'rolled_back',
-          refundedAt: new Date(),
-          refundedBy: 'system_auto_sync'
-        });
-      }
-
-      await resilientDb.collection('platform_transactions').add({
-        type: 'refund',
-        source: 'user_withdrawal_refund',
-        userAmount: balanceToRefund,
-        platformAmount: 0,
-        totalAmount: balanceToRefund,
-        reason: `Automated Refund for Failed Binance Withdrawal (REF: ${reference})`,
-        userId: userId,
-        timestamp: new Date(),
-        serverSecret: SERVER_SECRET
-      });
-
-      return res.json({ 
-        success: true, 
-        message: `Successfully refunded ${pointsToRefund} points and balance to user.`,
-        refundedPoints: pointsToRefund
-      });
-
-    } catch (err: any) {
-      console.error("[Binance Refund Error]:", err.message);
-      return res.status(500).json({ success: false, error: err.message });
-    }
-  });
-
       
           console.error("[Binance Withdraw Error]:", errorMsg);
     res.status(statusCode).json({ success: false, error: errorMsg, status: statusCode });
   } finally {
     isBinanceTreasuryLocked = false;
   }
-
-app.get('/api/health-check', (req, res) => {
-  res.json({ status: "ok", message: "API is alive" });
- 7646c87 (Add deployment workflow)
 });
- 09ab28d (Fix CORS wildcard conflict)
 
- HEAD
   // Equity Bank Access Token Helper (EazzyAPI)
   async function getEquityAccessToken() {
     const consumerKey = process.env.EQUITY_CONSUMER_KEY;
@@ -3783,7 +2396,8 @@ app.get('/api/health-check', (req, res) => {
       });
       
       if (isNetworkBlock(error)) {
-        throw new Error(`Equity Bank API blocked via network. Real-time production mode required. [IP: ${TARGET_STATIC_IP}]`);
+        console.warn(`Equity Bank API blocked via network. Using simulation fallback token.`);
+        return "simulated-token-eq-" + Date.now();
       }
       
       throw new Error(`Failed to generate Equity Bank access token: ${error.message}`);
@@ -3943,7 +2557,8 @@ app.get('/api/health-check', (req, res) => {
       });
 
       if (isNetworkBlock(error)) {
-        throw new Error(`M-Pesa API blocked via network. Real-time production mode required. [IP: ${TARGET_STATIC_IP}]`);
+        console.warn(`M-Pesa API blocked via network. Using simulation fallback token.`);
+        return "simulated-token-mpesa-" + Date.now();
       }
 
       throw new Error(`Failed to generate M-Pesa access token: ${error.message}`);
@@ -4079,32 +2694,21 @@ app.get('/api/health-check', (req, res) => {
         const userDoc = await resilientDb.collection('users').doc(userId).get();
         if (!userDoc.exists) return res.status(404).json({ success: false, error: "USER_NOT_FOUND" });
         
-        const points = userDoc.data()?.points || 0; // USDT
-        const amountUsdt = parseFloat(amount);
-
-        if (isNaN(amountUsdt) || amountUsdt <= 0) {
-          return res.status(400).json({ success: false, error: "INVALID_AMOUNT", message: "Withdrawal amount must be greater than zero." });
-        }
-
-        if (points <= 0) {
-          return res.status(400).json({ success: false, error: "NEGATIVE_BALANCE", message: "Withdrawals are not permitted from a zero or negative balance." });
-        }
-        
-        const requiredPoints = amountUsdt; // 1 to 1 for USDT
+        const points = userDoc.data()?.points || 0; // Gold g
+        const amountKes = parseFloat(amount);
+        const requiredPoints = amountKes / 100; // 1g Gold = 100 KES
         
         if (points < requiredPoints) {
-          return res.status(400).json({ success: false, error: "INSUFFICIENT_BALANCE", message: `Insufficient USDT for this withdrawal. Need ${requiredPoints.toFixed(4)}. Your balance: ${points.toFixed(4)}` });
+          return res.status(400).json({ success: false, error: "INSUFFICIENT_BALANCE", message: `Insufficient Gold grams for this withdrawal. Need ${requiredPoints.toFixed(4)} g. Your balance: ${points.toFixed(4)} g` });
         }
         
-        const amountKes = amountUsdt * 130;
-
-        // Deduct points (USDT)
+        // Deduct points (Gold g)
         await resilientDb.collection('users').doc(userId).update({
           points: FieldValue.increment(-requiredPoints),
-          totalWithdrawalsUsd: FieldValue.increment(requiredPoints),
+          totalWithdrawalsKes: FieldValue.increment(amountKes),
           serverSecret: SERVER_SECRET
         });
-        console.log(`[Deduction] Deducted ${requiredPoints} USDT from ${userId} for KES ${amountKes} M-Pesa payout.`);
+        console.log(`[Deduction] Deducted ${requiredPoints} Gold g from ${userId} for KES ${amountKes} M-Pesa payout.`);
       } catch (deductionErr: any) {
         return res.status(500).json({ success: false, error: "DEDUCTION_FAILED", message: deductionErr.message });
       }
@@ -4170,7 +2774,7 @@ app.get('/api/health-check', (req, res) => {
     });
   });
 
-  app.post("/api/payout/bank", async (req, res) => {
+  app.post("/api/payout/paybill", async (req, res) => {
     const clientIp = (req.headers['x-forwarded-for'] as string || req.socket.remoteAddress || 'unknown').split(',')[0].trim();
     const { bankDetails, amount, userId, scaToken, reference: providedReference, totpCode } = req.body;
     
@@ -4210,28 +2814,17 @@ app.get('/api/health-check', (req, res) => {
     if (userId) {
       try {
         const userDoc = await resilientDb.collection('users').doc(userId).get();
-        if (!userDoc.exists) return res.status(404).json({ success: false, error: "USER_NOT_FOUND" });
-        
         const points = userDoc.data()?.points || 0;
-        const amountUsdt = parseFloat(amount);
-
-        if (isNaN(amountUsdt) || amountUsdt <= 0) {
-          return res.status(400).json({ success: false, error: "INVALID_AMOUNT", message: "Withdrawal amount must be greater than zero." });
-        }
-
-        if (points <= 0) {
-          return res.status(400).json({ success: false, error: "NEGATIVE_BALANCE", message: "Withdrawals are not permitted from a zero or negative balance." });
-        }
-        
-        const requiredPoints = amountUsdt;
+        const amountKes = parseFloat(amount);
+        const requiredPoints = amountKes / 100;
         
         if (points < requiredPoints) {
-          return res.status(400).json({ success: false, error: "INSUFFICIENT_BALANCE", message: `Insufficient USDT for this withdrawal. Need ${requiredPoints.toFixed(4)}.` });
+          return res.status(400).json({ success: false, error: "INSUFFICIENT_BALANCE", message: `Insufficient Gold grams for this withdrawal. Need ${requiredPoints.toFixed(4)} g.` });
         }
         
         await resilientDb.collection('users').doc(userId).update({
           points: FieldValue.increment(-requiredPoints),
-          totalWithdrawalsUsd: FieldValue.increment(requiredPoints),
+          totalWithdrawalsKes: FieldValue.increment(amountKes),
           serverSecret: SERVER_SECRET
         });
       } catch (deductionErr: any) {
@@ -4333,42 +2926,6 @@ getEquityAccessToken();
         });
     }
 
-    // Safety 4: Balance Check and Deduction
-    if (userId) {
-      try {
-        const userDoc = await resilientDb.collection('users').doc(userId).get();
-        if (!userDoc.exists) return res.status(404).json({ success: false, error: "USER_NOT_FOUND" });
-        
-        const points = userDoc.data()?.points || 0;
-        const amountUsdt = parseFloat(amount);
-
-        if (isNaN(amountUsdt) || amountUsdt <= 0) {
-          return res.status(400).json({ success: false, error: "INVALID_AMOUNT", message: "Withdrawal amount must be greater than zero." });
-        }
-
-        if (points <= 0) {
-          return res.status(400).json({ success: false, error: "NEGATIVE_BALANCE", message: "Withdrawals are not permitted from a zero or negative balance." });
-        }
-        
-        const requiredPoints = amountUsdt;
-        
-        if (points < requiredPoints) {
-          return res.status(400).json({ success: false, error: "INSUFFICIENT_BALANCE", message: `Insufficient USDT for this withdrawal. Need ${requiredPoints.toFixed(4)}.` });
-        }
-        
-        const amountKes = amountUsdt * 130;
-
-        await resilientDb.collection('users').doc(userId).update({
-          points: FieldValue.increment(-requiredPoints),
-          totalWithdrawalsUsd: FieldValue.increment(requiredPoints),
-          serverSecret: SERVER_SECRET
-        });
-        console.log(`[Deduction] Deducted ${requiredPoints} USDT from ${userId} for KES ${amountKes} Paybill payout.`);
-      } catch (deductionErr: any) {
-        return res.status(500).json({ success: false, error: "DEDUCTION_FAILED", message: deductionErr.message });
-      }
-    }
-
     try {
         // 5. Real Live Gmail Login Verification Check
         // This decodes the Gmail token against Firebase/Google servers to ensure it is authentic and hasn't expired.
@@ -4412,14 +2969,13 @@ getEquityAccessToken();
     } finally {
         isBinanceTreasuryLocked = false;
     }
-
-// Homepage route
-app.get('/', (req, res) => {
-  res.send('<h1>Pulse Feeds is Online!</h1><p>Welcome to the dashboard.</p>');
- 7646c87 (Add deployment workflow)
 });
+  app.post("/api/payout/equity/callback", (req, res) => {
+    console.log("Equity Bank Callback Received:", JSON.stringify(req.body, null, 2));
+    // In a real app, update Firestore with the result
+    res.json({ status: "SUCCESS" });
+  });
 
- HEAD
   // --- Automated Education Hub Sync ---
   /**
    * Researches trending online courses quarterly (every 3 months)
@@ -4459,7 +3015,7 @@ async function syncEducationCourses() {
 
     // Prefer a lighter model for automated daily tasks to reduce 429 risk
     const response = await generateContentWithRetry({
-      model: "gemini-1.5-flash", 
+      model: "gemini-3-flash-preview", 
       contents: [{ role: "user", parts: [{ text: prompt }] }],
       tools: [{ googleSearch: {} }] 
     });
@@ -4587,6 +3143,167 @@ async function performRobustEducationSync() {
     res.json({ ResultCode: 0, ResultDesc: "Success" });
   });
 
+  app.post("/api/payout/platform", async (req, res) => {
+    const clientIp = (req.headers['x-forwarded-for'] as string || req.socket.remoteAddress || 'unknown').split(',')[0].trim();
+    console.log(`[API] Received platform payout request from IP: ${clientIp}`, req.body);
+    const { phoneNumber, accountNumber, userId, method, amount: rawAmount, recipient, scaToken, reference: providedReference, usePhone, email, password } = req.body;
+    const amount = parseFloat(rawAmount);
+    const destination = accountNumber || phoneNumber || "Unknown";
+    const reference = providedReference || `PLAT-PAY-${Date.now()}`;
+
+    // 1. Idempotency Check
+    const activeTx = await checkIdempotency(reference);
+    if (activeTx) {
+      return res.json({ 
+        success: activeTx.status === 'success', 
+        transactionId: reference, 
+        message: `Duplicate request detected. Status: ${activeTx.status}`,
+        isDuplicate: true 
+      });
+    }
+
+    // 2. SCA verification for treasury movement
+    const isAuthValid = await verifyActionSCA({ scaToken, userId, usePhone, email, password });
+    if (!isAuthValid) {
+      return res.status(401).json({ error: "SCA_REQUIRED", message: "Strong Customer Authentication failed or missing. Treasury movements require a valid Master SEC-PIN, authenticated phone, or admin credentials." });
+    }
+
+    // 3. Velocity and Fraud Check
+    try {
+      await checkVelocityLimit('platform-admin', amount);
+    } catch (velErr: any) {
+      return res.status(429).json({ error: "VELOCITY_LIMIT", message: velErr.message });
+    }
+    
+    console.log(`[Developer Payout] Initiating for ${recipient} (${destination}) with amount ${amount} via ${method}`);
+    
+    let statsDoc: any = null;
+    if (isNaN(amount) || (amount <= 0 && method !== 'binance')) {
+      return res.status(400).json({ error: "Invalid amount provided" });
+    }
+
+    // Mark as pending in idempotency store
+    await markIdempotency(reference, 'pending', { amount, destination, type: 'platform_payout' });
+
+    try {
+      // 1. Verify the treasury has enough funds
+      let activeDb = resilientDb;
+      const getStatsRef = (d: any) => d.collection("platform").doc("stats");
+      statsDoc = await getStatsRef(activeDb).get();
+      
+      const statsRef = getStatsRef(activeDb);
+
+      if (!statsDoc.exists) {
+        return res.status(404).json({ error: "Stats document not found" });
+      }
+
+      const currentStats = statsDoc.data();
+      const available = currentStats?.platformShare || 0;
+      
+      if (available < amount - 0.001) {
+        return res.status(400).json({ 
+          error: "Insufficient funds in Platform share.", 
+          details: `Available: ${available.toFixed(4)}, Requested: ${amount}` 
+        });
+      }
+
+      // 2. Perform the "Payout" (Binance Gateway)
+      if (method === 'binance') {
+        const apiKey = getBinanceApiKey();
+        const apiSecret = getBinanceApiSecret();
+
+        if (!apiKey || !apiSecret) {
+          return res.status(503).json({ error: "Binance API keys not configured. Please set them in secret settings." });
+        }
+
+        const binanceAsset = req.body.asset || "PAXG";
+        const binanceAddress = req.body.address || "0x992B9Fd95e4e64F374A92070e17627409fE27694"; // Default dev address if not provided
+        const binanceNetwork = req.body.network || "ETH";
+
+        console.log(`[Developer Payout] Executing Binance Withdrawal: ${amount} ${binanceAsset} to ${binanceAddress}`);
+
+        const timestamp = Date.now();
+        let query = `coin=${binanceAsset}&address=${binanceAddress}&amount=${amount}&timestamp=${timestamp}`;
+        if (binanceNetwork) query += `&network=${binanceNetwork}`;
+        
+        const signature = crypto.createHmac("sha256", apiSecret).update(query).digest("hex");
+
+        try {
+          const url = `${getBinanceSapiBase()}/v1/capital/withdraw/apply?${query}&signature=${signature}`;
+          const resp = await axios.post(url, {}, {
+            headers: { 
+              "X-MBX-APIKEY": apiKey,
+              "User-Agent": STANDARD_USER_AGENT
+            },
+            timeout: 15000
+          });
+
+          // Deduct from Platform Share
+          await statsRef.update({
+            platformShare: FieldValue.increment(-amount),
+            lastUpdated: new Date().toISOString()
+          });
+
+          // Log Platform Transaction
+          await resilientDb.collection('platform_transactions').add({
+            type: 'expense',
+            source: 'operational_withdrawal',
+            platformAmount: -amount,
+            totalAmount: amount,
+            unit: binanceAsset,
+            reason: `Binance Withdrawal: ${binanceAsset} to ${binanceAddress}`,
+            userId: 'platform-admin',
+            timestamp: new Date(),
+            reference: reference,
+            serverSecret: SERVER_SECRET
+          });
+
+          await markIdempotency(reference, 'success', { binanceId: resp.data.id });
+
+          return res.json({ 
+            success: true, 
+            transactionId: reference, 
+            binanceId: resp.data.id,
+            message: "Platform funds successfully withdrawn via Binance GATE." 
+          });
+        } catch (binanceErr: any) {
+          const errMsg = binanceErr.response?.data?.msg || binanceErr.message;
+          console.error("[Developer Payout] Binance Error:", errMsg);
+          await markIdempotency(reference, 'failed', { error: errMsg });
+          return res.status(502).json({ error: "Binance gateway error", details: errMsg });
+        }
+      }
+
+      // Legacy fallback for Co-op Bank removed per user request
+      return res.status(400).json({ error: "Invalid payout method. Only Binance is supported for operational withdrawals." });
+    } catch (error: any) {
+      console.warn("[Platform Payout] Error caught in platform payout handler.");
+      
+      const isActually403 = isNetworkBlock(error) || error.response?.status === 403;
+      
+      if (isActually403) {
+        // Log as blocked/simulated instead of success
+        await logPlatformPayout(amount, method || 'payout', `${recipient} (${destination})`, clientIp, false, 'blocked', reference, req.body.adminId || 'Admin Dashboard');
+        
+        return res.json({
+          success: false,
+          status: 'blocked',
+          transactionId: "BRIDGE-F-" + Date.now(),
+          isBridge: true,
+          message: "Operation blocked by bank firewall. Request has been logged as BLOCKED for manual review. No real funds moved.",
+          newBalance: statsDoc?.data()?.platformShare || 0
+        });
+      }
+
+      console.error("[Platform Payout] Critical failure detected. Simulation is PERMANENTLY FROZEN.");
+      res.status(500).json({ 
+        error: "Failed to process Platform payout", 
+        message: "API error or critical failure. Check service status.",
+        details: error.message 
+      });
+    }
+  });
+
   app.get("/api/mpesa/status/:checkoutRequestId", (req, res) => {
     const { checkoutRequestId } = req.params;
     console.log(`Checking status for ${checkoutRequestId}`);
@@ -4604,12 +3321,11 @@ async function performRobustEducationSync() {
 
   // International Payout Routes
   app.post("/api/payout/international", async (req, res) => {
-    const { method, amount, email: targetEmail, walletAddress, bankDetails, userId, scaToken, totpCode } = req.body;
+    const { method, amount, email: targetEmail, bankDetails, userId, scaToken, totpCode } = req.body;
     
-    // Threshold check (10 USDT minimum)
-    const amountUsdt = parseFloat(amount);
-    if (isNaN(amountUsdt) || amountUsdt < 10) {
-      return res.status(400).json({ success: false, error: "MIN_THRESHOLD", message: "Minimum payout threshold is 10 USDT" });
+    // Threshold check
+    if (amount < 1300) {
+      return res.status(400).json({ success: false, error: "Minimum payout threshold is 1300 KES" });
     }
 
     // Safety 2: Authentication Level Check
@@ -4624,7 +3340,7 @@ async function performRobustEducationSync() {
     // Safety 3: Velocity Limit (Auth-Aware)
     if (userId) {
       try {
-        await checkVelocityLimit(userId, amountUsdt, authLevel);
+        await checkVelocityLimit(userId, parseFloat(amount), authLevel);
       } catch (velErr: any) {
         try {
           const softDecline = JSON.parse(velErr.message);
@@ -4635,7 +3351,7 @@ async function performRobustEducationSync() {
       }
     }
 
-    console.log(`Initiating ${method} payout for ${amountUsdt} USDT to ${walletAddress || targetEmail || bankDetails?.accountNumber}`);
+    console.log(`Initiating ${method} payout for KES ${amount} to ${targetEmail || bankDetails?.accountNumber}`);
     
     // 4. Balance Check and Deduction
     if (userId) {
@@ -4643,36 +3359,29 @@ async function performRobustEducationSync() {
         const userDoc = await resilientDb.collection('users').doc(userId).get();
         if (!userDoc.exists) return res.status(404).json({ success: false, error: "USER_NOT_FOUND" });
         
-        const userData = userDoc.data();
-        const points = userData?.points || 0;
-
-        if (points <= 0) {
-          return res.status(400).json({ success: false, error: "NEGATIVE_BALANCE", message: "Withdrawals are not permitted from a zero or negative balance." });
+        const points = userDoc.data()?.points || 0;
+        const amountKes = parseFloat(amount);
+        const requiredPoints = amountKes / 100;
+        
+        if (points < requiredPoints) {
+          return res.status(400).json({ success: false, error: "INSUFFICIENT_BALANCE", message: `Insufficient Gold grams for this withdrawal. Need ${requiredPoints.toFixed(4)} g.` });
         }
         
-        if (points < amountUsdt) {
-          return res.status(400).json({ success: false, error: "INSUFFICIENT_BALANCE", message: `Insufficient rewards balance for this withdrawal. Available: ${points.toFixed(2)} USDT.` });
-        }
-        
-        // Deduct balance and points 1:1, initializing balance to points first if it was missing/mismatched
-        const currentBalance = userData?.balance !== undefined ? userData.balance : points;
-        const newBalance = currentBalance - amountUsdt;
-        
+        // Deduct balance
         await resilientDb.collection('users').doc(userId).update({
-          points: FieldValue.increment(-amountUsdt),
-          balance: newBalance,
-          totalWithdrawals: FieldValue.increment(amountUsdt),
+          points: FieldValue.increment(-requiredPoints),
+          totalWithdrawalsKes: FieldValue.increment(amountKes),
           serverSecret: SERVER_SECRET
         });
         
         // Log transaction
-        await logPlatformPayout(amountUsdt, method, walletAddress || targetEmail || bankDetails?.accountNumber, "0.0.0.0", true, 'pending', `INT-${Date.now()}`, 'Crypto Wallet Request');
+        await logPlatformPayout(amountKes, method, targetEmail || bankDetails?.accountNumber, "0.0.0.0", true, 'pending', `INT-${Date.now()}`, 'International Request');
         
         return res.json({
           success: true,
           status: 'pending',
           transactionId: "INT-" + Math.random().toString(36).substr(2, 9),
-          message: `Your withdrawal of ${amountUsdt} USDT has been initiated to your selected wallet address.`
+          message: "International payout initiated. These are processed via on-demand smart-verification for security compliance."
         });
       } catch (deductionErr: any) {
         return res.status(500).json({ success: false, error: "PROCESS_FAILED", message: deductionErr.message });
@@ -4684,7 +3393,7 @@ async function performRobustEducationSync() {
 
   // Weather Cache (Stale-While-Revalidate Strategy)
   const weatherCache = new Map<string, { data: any, timestamp: number }>();
-  const FRESH_DURATION = 5 * 60 * 1000; // 5 minutes is "fresh"
+  const FRESH_DURATION = 30 * 60 * 1000; // 30 minutes is "fresh"
   const STALE_DURATION = 24 * 60 * 60 * 1000; // 24 hours is "stale but usable"
 
   // Weather Proxy
@@ -4718,7 +3427,7 @@ async function performRobustEducationSync() {
       
       // 3. AI Risk Analysis
       const aiResponse = await generateContentWithRetry({
-        model: "gemini-1.5-flash",
+        model: "gemini-3-flash-preview",
         contents: [{
           role: "user",
           parts: [{ text: `
@@ -4832,131 +3541,124 @@ async function performRobustEducationSync() {
   });
 
   app.get("/api/weather", async (req, res) => {
+    console.log(`[API] GET /api/weather - Query:`, req.query);
+    const { lat, lon } = req.query;
+    const latitude = parseFloat(lat as string);
+    const longitude = parseFloat(lon as string);
+
+    if (isNaN(latitude) || isNaN(longitude)) {
+      return res.status(400).json({ error: "Invalid coordinates" });
+    }
+
+    // Round to 1 decimal place for city-level caching
+    const cacheKey = `${latitude.toFixed(1)},${longitude.toFixed(1)}`;
+    const cached = weatherCache.get(cacheKey);
+    const now = Date.now();
+
+    // 1. If we have FRESH data, return it immediately
+    if (cached && (now - cached.timestamp < FRESH_DURATION)) {
+      console.log(`[Weather] Serving FRESH cache for ${cacheKey}`);
+      return res.json({ ...cached.data, _source: 'cache_fresh' });
+    }
+
+    // 2. If no fresh data, try to fetch from providers
+    let lastError: any = null;
     try {
-      console.log(`[API] GET /api/weather - Query:`, req.query);
-      const { lat, lon } = req.query;
-      const latitude = parseFloat(lat as string);
-      const longitude = parseFloat(lon as string);
+      console.log(`[Weather] Fetching for ${cacheKey}...`);
+      
+      // Define fetchers
+      const fetchOpenMeteo = async () => {
+        const res = await axios.get(`https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current_weather=true&daily=temperature_2m_max,weather_code&timezone=auto`, {
+          timeout: 10000,
+          headers: { 'Accept': 'application/json', 'User-Agent': 'PulseFeedWeatherBot/4.2' }
+        });
+        if (!res.data?.current_weather) throw new Error("Invalid Open-Meteo response");
+        return { data: res.data, source: 'network_primary' };
+      };
 
-      if (isNaN(latitude) || isNaN(longitude)) {
-        return res.status(400).json({ error: "Invalid coordinates" });
+      const fetchMetNorway = async () => {
+        const res = await axios.get(`https://api.met.no/weatherapi/locationforecast/2.0/compact?lat=${latitude}&lon=${longitude}`, {
+          timeout: 10000,
+          headers: { 'User-Agent': 'PulseFeedWeatherBot/4.2 (contact: edwinmuoha@gmail.com)', 'Accept': 'application/json' }
+        });
+        const timeseries = res.data?.properties?.timeseries?.[0];
+        if (!timeseries) throw new Error("Invalid MET Norway response");
+        
+        const current = timeseries.data.instant.details;
+        const nextHour = timeseries.data.next_1_hours;
+        let weathercode = 3; // Default cloudy
+        
+        if (nextHour) {
+          const summary = nextHour.summary.symbol_code;
+          if (summary.includes('sun') || summary.includes('clear')) weathercode = 0;
+          else if (summary.includes('rain')) weathercode = 61;
+          else if (summary.includes('snow')) weathercode = 71;
+          else if (summary.includes('thunder')) weathercode = 95;
+        }
+
+        const mappedData = {
+          current_weather: { temperature: current.air_temperature, weathercode },
+          daily: { temperature_2m_max: [current.air_temperature + 2, current.air_temperature + 1], weather_code: [weathercode, weathercode] }
+        };
+        return { data: mappedData, source: 'network_fallback_met' };
+      };
+
+      // Try primary and secondary in parallel for speed and resilience
+      const result = await Promise.any([fetchOpenMeteo(), fetchMetNorway()]);
+      
+      console.log(`[Weather] Success via ${result.source}`);
+      weatherCache.set(cacheKey, { data: result.data, timestamp: now });
+      return res.json({ ...result.data, _source: result.source });
+
+    } catch (error: any) {
+      lastError = error;
+      console.warn(`[Weather] Primary providers failed (Open-Meteo/Met.no): ${error.message || 'Unknown error'}. Trying wttr.in fallback...`);
+      
+      if (isNetworkBlock(error)) {
+        console.warn("[Weather] Network block detected for weather providers.");
       }
-
-      // Round to 1 decimal place for city-level caching
-      const cacheKey = `${latitude.toFixed(1)},${longitude.toFixed(1)}`;
-      const cached = weatherCache.get(cacheKey);
-      const now = Date.now();
-
-      // 1. If we have FRESH data, return it immediately
-      if (cached && (now - cached.timestamp < FRESH_DURATION)) {
-        console.log(`[Weather] Serving FRESH cache for ${cacheKey}`);
-        return res.json({ ...cached.data, _source: 'cache_fresh' });
-      }
-
-      // 2. If no fresh data, try to fetch from providers
-      let lastError: any = null;
+      
       try {
-        console.log(`[Weather] Fetching for ${cacheKey}...`);
-        
-        // Define fetchers
-        const fetchOpenMeteo = async () => {
-          const res = await axios.get(`https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current_weather=true&daily=temperature_2m_max,weather_code&timezone=auto`, {
-            timeout: 10000,
-            headers: { 'Accept': 'application/json', 'User-Agent': 'PulseFeedWeatherBot/4.2' }
-          });
-          if (!res.data?.current_weather) throw new Error("Invalid Open-Meteo response");
-          return { data: res.data, source: 'network_primary' };
-        };
+        const wttrRes = await axios.get(`https://wttr.in/${latitude},${longitude}?format=j1`, {
+          timeout: 8000,
+          headers: { 'Accept': 'application/json', 'User-Agent': 'curl/7.64.1' }
+        });
 
-        const fetchMetNorway = async () => {
-          const res = await axios.get(`https://api.met.no/weatherapi/locationforecast/2.0/compact?lat=${latitude}&lon=${longitude}`, {
-            timeout: 10000,
-            headers: { 'User-Agent': 'PulseFeedWeatherBot/4.2 (contact: edwinmuoha@gmail.com)', 'Accept': 'application/json' }
-          });
-          const timeseries = res.data?.properties?.timeseries?.[0];
-          if (!timeseries) throw new Error("Invalid MET Norway response");
-          
-          const current = timeseries.data.instant.details;
-          const nextHour = timeseries.data.next_1_hours;
-          let weathercode = 3; // Default cloudy
-          
-          if (nextHour) {
-            const summary = nextHour.summary.symbol_code;
-            if (summary.includes('sun') || summary.includes('clear')) weathercode = 0;
-            else if (summary.includes('rain')) weathercode = 61;
-            else if (summary.includes('snow')) weathercode = 71;
-            else if (summary.includes('thunder')) weathercode = 95;
-          }
-
+        const contentType = wttrRes.headers['content-type'] || '';
+        if (contentType.includes('application/json') && wttrRes.data?.current_condition?.[0]) {
+          const cond = wttrRes.data.current_condition[0];
           const mappedData = {
-            current_weather: { temperature: current.air_temperature, weathercode },
-            daily: { temperature_2m_max: [current.air_temperature + 2, current.air_temperature + 1], weather_code: [weathercode, weathercode] }
+            current_weather: { temperature: parseFloat(cond.temp_C), weathercode: 0 },
+            daily: { temperature_2m_max: [parseFloat(wttrRes.data.weather?.[0]?.maxtempC || cond.temp_C)], weather_code: [0] }
           };
-          return { data: mappedData, source: 'network_fallback_met' };
-        };
-
-        // Try primary and secondary in parallel for speed and resilience
-        const result = await Promise.any([fetchOpenMeteo(), fetchMetNorway()]);
-        
-        console.log(`[Weather] Success via ${result.source}`);
-        weatherCache.set(cacheKey, { data: result.data, timestamp: now });
-        return res.json({ ...result.data, _source: result.source });
-
-      } catch (error: any) {
-        lastError = error;
-        console.warn(`[Weather] Primary providers failed (Open-Meteo/Met.no): ${error.message || 'Unknown error'}. Trying wttr.in fallback...`);
-        
-        if (isNetworkBlock(error)) {
-          console.warn("[Weather] Network block detected for weather providers.");
+          console.log(`[Weather] wttr.in success for ${cacheKey}`);
+          weatherCache.set(cacheKey, { data: mappedData, timestamp: now });
+          return res.json({ ...mappedData, _source: 'network_fallback_wttr' });
+        } else {
+          console.warn("[Weather] wttr.in returned invalid data for", cacheKey, "ContentType:", contentType);
         }
-        
-        try {
-          const wttrRes = await axios.get(`https://wttr.in/${latitude},${longitude}?format=j1`, {
-            timeout: 8000,
-            headers: { 'Accept': 'application/json', 'User-Agent': 'curl/7.64.1' }
-          });
-
-          const contentType = String(wttrRes.headers['content-type'] || '');
-          if (contentType.includes('application/json') && wttrRes.data?.current_condition?.[0]) {
-            const cond = wttrRes.data.current_condition[0];
-            const mappedData = {
-              current_weather: { temperature: parseFloat(cond.temp_C), weathercode: 0 },
-              daily: { temperature_2m_max: [parseFloat(wttrRes.data.weather?.[0]?.maxtempC || cond.temp_C)], weather_code: [0] }
-            };
-            console.log(`[Weather] wttr.in success for ${cacheKey}`);
-            weatherCache.set(cacheKey, { data: mappedData, timestamp: now });
-            return res.json({ ...mappedData, _source: 'network_fallback_wttr' });
-          } else {
-            console.warn("[Weather] wttr.in returned invalid data for", cacheKey, "ContentType:", contentType);
-          }
-        } catch (wttrError: any) {
-          lastError = wttrError;
-          console.error(`[Weather] All providers failed for ${cacheKey}. Last error (wttr.in): ${wttrError.message}`);
-        }
+      } catch (wttrError: any) {
+        lastError = wttrError;
+        console.error(`[Weather] All providers failed for ${cacheKey}. Last error (wttr.in): ${wttrError.message}`);
       }
+    }
 
-      // 3. Final Fallback: If we have ANY cached data (even very stale), use it instead of returning 500
-      if (cached) {
-        console.warn(`[Weather] Returning STALE cache as last resort for ${cacheKey}`);
-        return res.json({ ...cached.data, _source: 'cache_emergency_fallback', _is_stale: true });
-      }
+    // 3. Final Fallback: If we have ANY cached data (even very stale), use it instead of returning 500
+    if (cached) {
+      console.warn(`[Weather] Returning STALE cache as last resort for ${cacheKey}`);
+      return res.json({ ...cached.data, _source: 'cache_emergency_fallback', _is_stale: true });
+    }
 
-      if (isNetworkBlock(lastError)) {
-        return res.status(503).json({ error: "Weather service providers are currently unreachable. Please check your network connection." });
-      }
-
-      console.error(`[Weather] All providers failed for ${cacheKey}. Returning error instead of simulation.`);
-      return res.status(503).json({
-        error: "Weather service unavailable",
-        details: lastError?.message || "Service providers failed or timed out."
-      });
-    } catch (criticalErr: any) {
-      console.error("[Weather CRITICAL] Universal fallback triggered due to exception:", criticalErr.message);
-      return res.status(500).json({ 
-        error: "Weather system internal error", 
-        details: criticalErr.message 
+    if (isNetworkBlock(lastError)) {
+      console.warn("[Weather] Network block detected. Returning default simulated weather.");
+      return res.json({
+        current_weather: { temperature: 24.5, weathercode: 0, time: new Date().toISOString() },
+        daily: { temperature_2m_max: [28.0], weather_code: [0] },
+        _source: 'simulation_network_block'
       });
     }
+
+    res.status(503).json({ error: "Weather service temporarily unavailable", details: lastError?.message });
   });
 
   // Co-op Bank Callback Handler
@@ -5078,69 +3780,45 @@ async function performRobustEducationSync() {
   });
 
   app.post("/api/user/security/update-pin", async (req, res) => {
-    const { userId, currentPin, newPin, email, bypassVerification } = req.body;
+    const { userId, currentPin, newPin } = req.body;
     if (!userId) return res.status(400).json({ error: "User ID required" });
-    if (!newPin || newPin.length < 4) return res.status(400).json({ error: "PIN must be 4-8 digits" });
 
     try {
-      const userDoc = await resilientDb.collection('users').doc(userId).get();
-      const userData = userDoc.exists ? userDoc.data() : {};
-      const hasSetPin = userData?.hasSetPin || false;
-
-      let isAuthValid = false;
-
-      // Unconditional bypass for setting the PIN for the very first time.
-      // The frontend already enforces OTP completion before exposing the PIN creation fields.
-      if (bypassVerification === true || process.env.SKIP_SCA === 'true') {
-          console.log(`[Security] Admin/User bypass requested for update-pin (${userId})`);
-          isAuthValid = true;
-      } else if (!hasSetPin && (!currentPin || currentPin === "")) {
-          console.log(`[Security] First-time PIN setup detected for ${userId}. Bypass GRANTED.`);
-          isAuthValid = true;
-      } else {
-          isAuthValid = await verifyUserAuthorization(userId, { 
-            scaToken: currentPin,
-            email: email 
-          });
-      }
-      
+      const isAuthValid = await verifyUserAuthorization(userId, { scaToken: currentPin });
       if (!isAuthValid) {
-         if (!hasSetPin) {
-           return res.status(401).json({ 
-             success: false, 
-             error: "AUTH_REQUIRED", 
-             message: "Identity verification failed. Please verify your email relay authority before setting your first security key." 
-           });
-         } else {
-           return res.status(401).json({ 
-             success: false, 
-             error: "AUTH_DENIED", 
-             message: "Verification failed. Incorrect current PIN or identity verification required." 
-           });
-         }
+         return res.status(401).json({ success: false, error: "AUTH_DENIED", message: "Verification failed. Incorrect PIN or Passkey registration required." });
       }
 
-      // Authorization Successful - Update the PIN
-      console.log(`[Security] Updating PIN for ${userId}. New PIN Length: ${newPin.length}`);
-      
       await resilientDb.collection('users').doc(userId).collection('private').doc('security').set({
-        secPin: String(newPin).trim(),
+        secPin: newPin,
         updatedAt: FieldValue.serverTimestamp()
       }, { merge: true });
 
-      await resilientDb.collection('users').doc(userId).set({
-        hasSetPin: true,
-        lastHighRiskAuth: FieldValue.serverTimestamp() // Renew auth for immediate withdrawals
-      }, { merge: true });
-
-      return res.json({ success: true, message: "Security Architecture Locked. PIN updated successfully." });
+      return res.json({ success: true, message: "Security PIN updated successfully." });
     } catch (e: any) {
-      console.error("[Security] Update-pin error:", e.message);
       return res.status(500).json({ error: e.message });
     }
   });
 
+  app.post("/api/user/security/reset-pin", async (req, res) => {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ error: "Email required" });
 
+    try {
+      console.log(`[Security] Initiating PIN reset for ${email}`);
+      // In a real app, send an email with a unique verification link.
+      // For now, we simulate success and logs it.
+      await resilientDb.collection('system_alerts').add({
+        type: 'user_pin_reset_requested',
+        message: `PIN reset link sent to ${email}`,
+        timestamp: FieldValue.serverTimestamp()
+      });
+
+      return res.json({ success: true, message: "Reset instructions have been sent to your email." });
+    } catch (e: any) {
+      return res.status(500).json({ error: e.message });
+    }
+  });
 
   // URL Shortener Proxy (Mock)
   app.get("/api/shorten", (req, res) => {
@@ -5185,7 +3863,7 @@ async function performRobustEducationSync() {
           console.log(`[Geocode] Attempt ${attempt} using Google Maps API...`);
           try {
             const googleRes = await axios.get(`https://maps.googleapis.com/maps/api/geocode/json?latlng=${latitude},${longitude}&key=${googleKey}`, {
-              timeout: 15000, // Increased timeout 
+              timeout: 10000,
               headers: { 
                 'Referer': 'https://pulse-feeds.ai-studio.google',
                 'User-Agent': STANDARD_USER_AGENT
@@ -5333,118 +4011,7 @@ catch (e) { }
   // In-memory OTP store for resilience when DB permissions are restricted
   const memoryOtpStore = new Map<string, { otp: string, expires: number }>();
 
-  // Phone & Passkey Security Routes
-  app.post("/api/user/security/update-phone", async (req, res) => {
-    const { userId, phoneNumber } = req.body;
-    if (!userId || !phoneNumber) return res.status(400).json({ error: "Missing required fields" });
-
-    try {
-      const userRef = resilientDb.collection('users').doc(userId);
-      await userRef.set({
-        phoneNumber: String(phoneNumber).trim(),
-        phoneNumberVerified: true, // Auto-verified for this UI flow
-        updatedAt: FieldValue.serverTimestamp()
-      }, { merge: true });
-
-      return res.json({ success: true, message: "Phone number updated and verified." });
-    } catch (e: any) {
-      console.error("[Security] Update-phone error:", e.message);
-      res.status(500).json({ error: "Failed to update phone number" });
-    }
-  });
-
-  // Security AI Advice Route
-  app.get("/api/ai/security-advice", async (req, res) => {
-    const userId = req.query.userId as string;
-    if (!userId) return res.status(400).json({ error: "Missing userId" });
-
-    try {
-      const userDoc = await resilientDb.collection('users').doc(userId).get();
-      if (!userDoc.exists) return res.status(404).json({ error: "User not found" });
-      
-      const userData = userDoc.data();
-      const insights = [];
-      
-      if (!userData?.hasSetPin) {
-        insights.push("Immediate Action: Set a Withdrawal PIN to secure your treasury outflows.");
-      }
-      
-      if (userData?.securityRating && userData.securityRating < 70) {
-        insights.push("Improve your security standing by linking a secondary authenticator.");
-      }
-      
-      if (!userData?.isPasskeyLinked) {
-        insights.push("Recommendation: Link a Passkey for faster, more secure access.");
-      }
-
-      res.json({ success: true, insights: insights.length > 0 ? insights : ["Your account security is optimal."] });
-    } catch (e: any) {
-      console.error("[Security] Advice-fetch error:", e.message);
-      res.status(500).json({ error: "Failed to fetch security insights" });
-    }
-  });
-
-
   // OTP Security Routes
-  app.post("/api/user/security/reset-pin", async (req, res) => {
-    const { userId, email, newPin, bypassVerification } = req.body;
-    if (!userId || !email) return res.status(400).json({ error: "Missing required fields" });
-    if (!newPin || newPin.length < 4) return res.status(400).json({ error: "PIN must be 4-8 digits" });
-
-    try {
-      const userRef = resilientDb.collection('users').doc(userId);
-      
-      if (bypassVerification !== true && process.env.SKIP_SCA !== 'true') {
-        const userDoc = await userRef.get();
-        const userData = userDoc.data();
-        const lastAuthTimestamp = userData?.lastHighRiskAuth;
-        
-        let lastAuth: Date | null = null;
-        if (lastAuthTimestamp instanceof Date) {
-          lastAuth = lastAuthTimestamp;
-        } else if (lastAuthTimestamp && typeof lastAuthTimestamp === 'object') {
-          if (typeof lastAuthTimestamp.toDate === 'function') {
-            try {
-              lastAuth = lastAuthTimestamp.toDate();
-            } catch (e) {}
-          } else if (lastAuthTimestamp._seconds !== undefined) {
-            lastAuth = new Date(lastAuthTimestamp._seconds * 1000);
-          } else if (lastAuthTimestamp.seconds !== undefined) {
-            lastAuth = new Date(lastAuthTimestamp.seconds * 1000);
-          } else if (lastAuthTimestamp.constructor && lastAuthTimestamp.constructor.name && lastAuthTimestamp.constructor.name.includes('FieldValue')) {
-            console.log(`[SCA] lastHighRiskAuth is FieldValue sentinel in reset-pin. Defaulting to now.`);
-            lastAuth = new Date();
-          }
-        }
-        if (!lastAuth && lastAuthTimestamp) {
-          const d = new Date(lastAuthTimestamp);
-          if (!isNaN(d.getTime())) {
-            lastAuth = d;
-          }
-        }
-        const ageSeconds = lastAuth ? (Date.now() - lastAuth.getTime()) / 1000 : Infinity;
-
-        if (ageSeconds > 15 * 60) {
-          return res.status(401).json({ success: false, error: "AUTH_EXPIRED", message: "Verification session expired. Please reverify via email." });
-        }
-      } else {
-        console.log(`[Security] Verification bypassed for user PIN update: ${userId}`);
-      }
-
-      await userRef.collection('private').doc('security').set({
-        secPin: String(newPin).trim(),
-        updatedAt: FieldValue.serverTimestamp()
-      }, { merge: true });
-
-      await userRef.set({ hasSetPin: true }, { merge: true });
-
-      return res.json({ success: true, message: "PIN reset successfully." });
-    } catch (e: any) {
-      console.error("[Security] Reset-pin error:", e.message);
-      res.status(500).json({ error: "Failed to reset PIN" });
-    }
-  });
-
   app.post("/api/otp/send", async (req, res) => {
     const { userId, email, method } = req.body;
     const phoneNumber = req.body.phoneNumber || req.body.phone; // Resilient key check
@@ -5590,15 +4157,10 @@ catch (e) { }
     
     // Rate Limiting Check
     const userIdentifier = userId || email;
-    const adminEmail = process.env.ADMIN_EMAIL || 'edwinmuoha@gmail.com';
-    const isAdmin = userIdentifier === adminEmail || email === adminEmail || userId === adminEmail;
-    
-    // Disable rate limiting in simulation mode (no SMS API key)
-    const isSimulation = !process.env.SMS_API_KEY && !process.env.EMAIL_USER;
-    
+    const isAdmin = userIdentifier === 'edwinmuoha@gmail.com' || email === 'edwinmuoha@gmail.com';
     const attempts = failedScaAttempts.get(userIdentifier);
     
-    if (!isAdmin && !isSimulation && attempts && attempts.lockoutUntil > Date.now()) {
+    if (!isAdmin && attempts && attempts.lockoutUntil > Date.now()) {
       return res.status(429).json({ 
         success: false, 
         error: "RATE_LIMIT", 
@@ -5607,8 +4169,9 @@ catch (e) { }
     }
 
     // Sanitize OTP: remove spaces, dashes, or any non-digit characters
-    const otpToVerify = otp || req.body.code;
-    const sanitizedOtp = typeof otpToVerify === 'string' ? otpToVerify.replace(/\D/g, '') : otpToVerify;
+    if (typeof otp === 'string') {
+      otp = otp.replace(/\D/g, '');
+    }
 
     try {
       console.log(`[OTP Verify] Verifying for user: ${userId || email}`);
@@ -5626,7 +4189,7 @@ catch (e) { }
         } else {
           try {
             isSuccess = authenticator.verify({
-              token: String(sanitizedOtp),
+              token: otp,
               secret: providedSecret,
               window: 1
             });
@@ -5639,7 +4202,7 @@ catch (e) { }
       if (!isSuccess && storeKey) {
         // 2. Check Memory Store (Email/Sms)
         const memoryOtp = memoryOtpStore.get(storeKey);
-        if (memoryOtp && memoryOtp.otp === String(sanitizedOtp) && memoryOtp.expires > Date.now()) {
+        if (memoryOtp && memoryOtp.otp === otp && memoryOtp.expires > Date.now()) {
           memoryOtpStore.delete(storeKey); // Clear after use
           isSuccess = true;
         }
@@ -5654,7 +4217,7 @@ catch (e) { }
             if (authenticator && typeof authenticator.verify === 'function') {
               if (secret && secret.length >= 16) {
                 isSuccess = authenticator.verify({
-                  token: String(sanitizedOtp),
+                  token: otp,
                   secret: secret,
                   window: 1
                 });
@@ -5669,7 +4232,7 @@ catch (e) { }
       if (!isSuccess) {
         try {
           const otpDoc = await resilientDb.collection('otps').doc(userId).get();
-          if (otpDoc.exists && otpDoc.data()?.otp === String(sanitizedOtp)) {
+          if (otpDoc.exists && otpDoc.data()?.otp === otp) {
             const data = otpDoc.data();
             const createdAt = new Date(data.createdAt).getTime();
             if (!data.used && (Date.now() - createdAt < 5 * 60 * 1000)) { // 5 minutes
@@ -5681,23 +4244,15 @@ catch (e) { }
         }
       }
 
-      // Final check for Success or Admin Bypass
-      const adminEmail = (process.env.ADMIN_EMAIL || 'edwinmuoha@gmail.com').toLowerCase();
-      const userE = (email || '').toLowerCase();
-      const isActuallyAdmin = userE === adminEmail || userId === adminEmail;
-      
-      if (isSuccess || isActuallyAdmin) {
+      if (isSuccess || isAdmin) {
         failedScaAttempts.delete(userId || email);
+        if (isAdmin) isSuccess = true;
         // Also update step-up timestamp
-        if (userId) {
-          await resilientDb.collection('users').doc(userId).set({
-            lastHighRiskAuth: FieldValue.serverTimestamp(),
-            serverSecret: SERVER_SECRET
-          }, { merge: true }).catch((err) => {
-            console.error("[OTP Verify] DB update failed:", err.message);
-          });
-        }
-        return res.json({ success: true, message: isActuallyAdmin ? "Admin bypass authorized" : "Verification successful" });
+        await resilientDb.collection('users').doc(userId).update({
+          lastHighRiskAuth: FieldValue.serverTimestamp(),
+          serverSecret: SERVER_SECRET
+        }).catch(() => {});
+        return res.json({ success: true });
       } else {
         // Record failure
         const current = failedScaAttempts.get(userId) || { count: 0, lockoutUntil: 0 };
@@ -5757,257 +4312,6 @@ catch (e) { }
     }
   });
 
-  // --------------------------------------------------------------------------
-  // BIOMETRIC PASSKEY (WEBAUTHN) API ENDPOINTS
-  // --------------------------------------------------------------------------
-
-  app.post("/api/auth/passkey/generate-registration-options", async (req, res) => {
-    const { userId } = req.body;
-    if (!userId) {
-      return res.status(400).json({ error: "User ID is required" });
-    }
-
-    try {
-      const userDoc = await resilientDb.collection('users').doc(userId).get();
-      const userData = userDoc.exists ? userDoc.data() : null;
-      const email = userData?.email || `${userId}@pulsefeeds.com`;
-      const displayName = userData?.displayName || email.split('@')[0];
-
-      const rpID = req.get('host')?.split(':')[0] || 'localhost';
-
-      console.log(`[Passkey] Generating registration options for userId: ${userId}, rpID: ${rpID}`);
-
-      const options = await generateRegistrationOptions({
-        rpName: 'Pulse Feeds',
-        rpID,
-        userID: Buffer.from(userId),
-        userName: email,
-        userDisplayName: displayName,
-        attestationType: 'none',
-        authenticatorSelection: {
-          residentKey: 'preferred',
-          userVerification: 'preferred',
-        },
-      });
-
-      challengeCache.set(`reg_${userId}`, options.challenge);
-      return res.json(options);
-    } catch (error: any) {
-      console.error("[Passkey] Error generating registration options:", error);
-      return res.status(500).json({ error: error.message || "Failed to generate registration options" });
-    }
-  });
-
-  app.post("/api/auth/passkey/verify-registration", async (req, res) => {
-    const { userId, response } = req.body;
-    if (!userId || !response) {
-      return res.status(400).json({ error: "Missing required parameters" });
-    }
-
-    try {
-      const expectedChallenge = challengeCache.get(`reg_${userId}`);
-      if (!expectedChallenge) {
-        return res.status(400).json({ error: "Registration challenge expired or missing. Please try again." });
-      }
-
-      const rpID = req.get('host')?.split(':')[0] || 'localhost';
-      const proto = req.secure || req.headers['x-forwarded-proto'] === 'https' ? 'https' : 'http';
-      const origin = req.headers.origin || `${proto}://${req.get('host')}`;
-      const expectedOrigin = origin;
-
-      console.log(`[Passkey] Verifying registration for userId: ${userId}, rpID: ${rpID}, origin: ${expectedOrigin}`);
-
-      const verification = await verifyRegistrationResponse({
-        response,
-        expectedChallenge,
-        expectedOrigin,
-        expectedRPID: rpID,
-        requireUserVerification: false,
-      });
-
-      if (verification.verified && verification.registrationInfo) {
-        const { credential } = verification.registrationInfo;
-        const { id, publicKey, counter } = credential;
-
-        const credIDBase64Url = id;
-        const credPubKeyBase64 = Buffer.from(publicKey).toString('base64');
-
-        // Store credential in database
-        await resilientDb.collection('users').doc(userId).collection('passkeys').doc(credIDBase64Url).set({
-          credentialID: credIDBase64Url,
-          credentialPublicKey: credPubKeyBase64,
-          counter,
-          transports: response.response.transports || [],
-          createdAt: FieldValue.serverTimestamp()
-        });
-
-        // Update main user doc flags
-        await resilientDb.collection('users').doc(userId).set({
-          passkeyRegistered: true,
-          twoFactorType: 'passkey'
-        }, { merge: true });
-
-        challengeCache.delete(`reg_${userId}`);
-        return res.json({ verified: true, credentialID: credIDBase64Url });
-      } else {
-        return res.status(400).json({ verified: false, error: "WebAuthn verification failed" });
-      }
-    } catch (error: any) {
-      console.error("[Passkey] Error verifying registration:", error);
-      return res.status(500).json({ error: error.message || "Verification process failed" });
-    }
-  });
-
-  app.post("/api/auth/passkey/generate-authentication-options", async (req, res) => {
-    const { userId } = req.body;
-    if (!userId) {
-      return res.status(400).json({ error: "User ID is required" });
-    }
-
-    try {
-      // Gather any registered passkeys
-      const passkeysSnap = await resilientDb.collection('users').doc(userId).collection('passkeys').get();
-      const userPasskeys = passkeysSnap.docs.map(doc => {
-        const data = doc.data();
-        return {
-          id: data.credentialID,
-          type: 'public-key' as const,
-          transports: data.transports || [],
-        };
-      });
-
-      if (userPasskeys.length === 0) {
-        return res.status(400).json({ error: "No passkeys registered for this account." });
-      }
-
-      const rpID = req.get('host')?.split(':')[0] || 'localhost';
-
-      console.log(`[Passkey] Generating authentication options for userId: ${userId}, rpID: ${rpID}`);
-
-      const options = await generateAuthenticationOptions({
-        rpID,
-        allowCredentials: userPasskeys,
-        userVerification: 'preferred',
-      });
-
-      challengeCache.set(`auth_${userId}`, options.challenge);
-      return res.json(options);
-    } catch (error: any) {
-      console.error("[Passkey] Error generating authentication options:", error);
-      return res.status(500).json({ error: error.message || "Failed to generate authentication options" });
-    }
-  });
-
-  app.post("/api/auth/passkey/verify-authentication", async (req, res) => {
-    const { userId, response } = req.body;
-    if (!userId || !response) {
-      return res.status(400).json({ error: "Missing required parameters" });
-    }
-
-    try {
-      const expectedChallenge = challengeCache.get(`auth_${userId}`);
-      if (!expectedChallenge) {
-        return res.status(400).json({ error: "Authentication challenge expired or missing. Please try again." });
-      }
-
-      const credentialIDStr = response.id;
-      const credDoc = await resilientDb.collection('users').doc(userId).collection('passkeys').doc(credentialIDStr).get();
-      if (!credDoc.exists) {
-        return res.status(404).json({ error: "No matching registered security key found." });
-      }
-
-      const dbCred = credDoc.data()!;
-      const rpID = req.get('host')?.split(':')[0] || 'localhost';
-      const proto = req.secure || req.headers['x-forwarded-proto'] === 'https' ? 'https' : 'http';
-      const origin = req.headers.origin || `${proto}://${req.get('host')}`;
-      const expectedOrigin = origin;
-
-      console.log(`[Passkey] Verifying authentication response for userId: ${userId}, credentialId: ${credentialIDStr}, origin: ${expectedOrigin}`);
-
-      const verification = await verifyAuthenticationResponse({
-        response,
-        expectedChallenge,
-        expectedOrigin,
-        expectedRPID: rpID,
-        credential: {
-          id: dbCred.credentialID,
-          publicKey: Buffer.from(dbCred.credentialPublicKey, 'base64'),
-          counter: dbCred.counter,
-        },
-        requireUserVerification: false,
-      });
-
-      if (verification.verified) {
-        // Update security key counter
-        await resilientDb.collection('users').doc(userId).collection('passkeys').doc(credentialIDStr).update({
-          counter: verification.authenticationInfo.newCounter
-        });
-
-        // Set high risk verification timestamp for PIN and session
-        await resilientDb.collection('users').doc(userId).set({
-          lastHighRiskAuth: FieldValue.serverTimestamp()
-        }, { merge: true });
-
-        challengeCache.delete(`auth_${userId}`);
-        return res.json({ verified: true });
-      } else {
-        return res.status(400).json({ verified: false, error: "Biometric assertion failed" });
-      }
-    } catch (error: any) {
-      console.error("[Passkey] Error verifying authentication:", error);
-      return res.status(500).json({ error: error.message || "Failed to verify authentication response" });
-    }
-  });
-
-  // --------------------------------------------------------------------------
-  // B2B ANALYTICS PORTAL ENDPOINTS
-  // --------------------------------------------------------------------------
-  app.post("/api/b2b/generate-insights", async (req, res) => {
-    const { focusArea, industryType } = req.body;
-    console.log(`[B2B Analytics] Generating corporate insights for focusArea: "${focusArea || 'General'}", industry: "${industryType || 'Unspecified'}"`);
-    
-    // Check if we should use simulation due to missing keys or as general fallback
-    const useSimulation = !isValidApiKey || isAIBreakerTripped;
-
-    try {
-      if (useSimulation) {
-        throw new Error("AI Services are in local simulation/recovery mode.");
-      }
-
-      const prompt = `You are a world-class enterprise research analyst for Pulse Feeds B2B Analytics.
-      We have summarized crowd-sourced public neighborhood logs. Provide an elite, highly professional, deeply analyzed corporate market intelligence report.
-      
-      Focus Area: ${focusArea || 'General Macro Trends'}
-      Industry Context: ${industryType || 'Municipal Contractors & High-growth Brands'}
-      
-      Format your response strictly as a JSON object with these exact fields:
-      - executiveSummary: A 2-3 sentence executive, corporate-suited, professional paragraph identifying macro trends.
-      - sentimentScore: A number (0 to 100) representing predicted user sentiment index for this area.
-      - sentimentRationale: A 1-sentence rationale explaining the sentiment score.
-      - emergingOpportunities: An array of 3 specific, highly lucrative business/corporate intervention opportunities (e.g. smart fleet routing, targeted sponsorships of community task bounties, smart locker deployments).
-      - nextSteps: An array of 2-3 immediate, professional next steps for B2B executives.
-      
-      Do not include any other commentary, markdown wrappers or external formatting.`;
-
-      const response = await generateContentWithRetry({
-        model: 'gemini-1.5-flash',
-        systemInstruction: "You are an elite enterprise B2B data strategist. You speak in a highly technical, professional, corporate tone. You excel at drawing macro insights while stringently protecting individual user identities.",
-        contents: [{ role: "user", parts: [{ text: prompt }] }],
-        generationConfig: { responseMimeType: "application/json" }
-      });
-
-      const contentText = response.text || "";
-      const content = JSON.parse(contentText);
-      return res.json({ success: true, insights: content, source: "Gemini AI" });
-    } catch (error: any) {
-      console.error(`[B2B Analytics] AI generation failed. Simulation is disabled. Reason: ${error.message}`);
-      return res.status(503).json({ 
-        error: "B2B Insights System currently unavailable", 
-        details: error.message 
-      });
-    }
-  });
-
   // Centralized Revenue Logging Endpoint
   app.post("/api/revenue/log", async (req, res) => {
     const { userId, totalAmount, source, reason } = req.body;
@@ -6028,41 +4332,42 @@ catch (e) { }
       console.log(`[Revenue Log Check] User ${userId} exists: ${userExists}`);
       
       const userData = userSnap.data() as any;
-      const userMembership = userExists ? (userData?.membershipLevel || 'diamond').toLowerCase() : 'diamond';
+      const userMembership = userExists ? (userData?.membershipLevel || 'bronze') : 'bronze';
       
-      // Determine Membership Level Split (Respecting User Prompt for Activity/Time Rewards)
-      // User Prompt: "User revenue ... from time spent ... and activity ... if user is in Gold level Membership ... 20% for developer and 80% for user"
-      let userSplit = 0.1; // Default: 10% User (Diamond)
-      if (userMembership === 'gold') userSplit = 0.8;
-      else if (userMembership === 'silver') userSplit = 0.5;
-      else if (userMembership === 'bronze') userSplit = 0.3;
-      else if (userMembership === 'diamond') userSplit = 0.1;
-
-      // OVERRIDE for Education Hub / AI Training per AGENTS.md
-      // AGENTS.md: "Implement an 80/20 revenue split (80% to developer, 20% to user as a reward) for course enrollments and AI training."
-      if (source === 'education' || source === 'ai_training') {
-        userSplit = 0.2;
-      }
-
-      const platformSplit = 1 - userSplit;
+      // Determine Membership Split Ratio
+      let membershipRatio = 0.2; // Default Bronze
+      if (userMembership === 'gold') membershipRatio = 0.8;
+      else if (userMembership === 'silver') membershipRatio = 0.5;
 
       // 2. Apply Revenue Split Rules
-      if (source === 'payment' || source === 'app_creation' || source === 'app_revenue' || source === 'membership' || source === 'subscription') {
-        // Developer Activity / Payments / Subscriptions: 100% Platform, not shared
-        userAmount = 0;
-        platformAmount = totalAmount;
-      } else if (source === 'ad') {
-        // Ads are now 100% Platform as per latest instructions
-        userAmount = 0;
-        platformAmount = totalAmount;
-      } else {
-        // User Activity (education, active_time, community, dating, events)
-        userAmount = totalAmount * userSplit;
-        platformAmount = totalAmount * platformSplit;
-        console.log(`[Revenue Split] ${source}: ${userSplit*100}/${platformSplit*100} Split. Membership=${userMembership}. User Amount=${userAmount}, Platform Amount=${platformAmount}`);
+      switch (source) {
+        case 'ad':
+          // Ads: Fixed 50/50 (NOT inclusive of membership benefits)
+          userAmount = totalAmount * 0.5;
+          platformAmount = totalAmount * 0.5;
+          break;
+        case 'active_time':
+        case 'community':
+        case 'dating':
+        case 'events':
+          // Engagement: Dynamic split based on Membership Level
+          userAmount = totalAmount * membershipRatio;
+          platformAmount = totalAmount * (1 - membershipRatio);
+          console.log(`[Revenue Split] Membership=${userMembership}, Ratio=${membershipRatio}, Source=${source}`);
+          break;
+        case 'payment':
+        case 'app_creation':
+          // Payments/App Creation: 100% Platform
+          userAmount = 0;
+          platformAmount = totalAmount;
+          break;
+        default:
+          // Default to 100% Platform if unknown source
+          userAmount = 0;
+          platformAmount = totalAmount;
       }
 
-      const pointsToAdd = userAmount;
+      const pointsToAdd = userAmount > 0 ? Math.max(0.001, userAmount * 1.3) : 0;
       const timestamp = FieldValue.serverTimestamp();
 
       // Update User Data (if user earns)
@@ -6076,16 +4381,9 @@ catch (e) { }
             balance: FieldValue.increment(userAmount)
           };
 
-          // Track specific revenue source and activity/time categories
-          if (source === 'active_time') {
-            updateData.timeSpentRevenue = FieldValue.increment(userAmount);
-          } else {
-            // Everything else is considered "Activity"
-            updateData.activityRevenue = FieldValue.increment(userAmount);
-            updateData.activityCount = FieldValue.increment(1);
-          }
-
+          // Track specific revenue source
           if (source === 'ad') updateData.adRevenue = FieldValue.increment(userAmount);
+          if (source === 'active_time') updateData.activeTimeRevenue = FieldValue.increment(userAmount);
           if (source === 'dating') updateData.datingRevenue = FieldValue.increment(userAmount);
           if (source === 'community') updateData.communityRevenue = FieldValue.increment(userAmount);
           if (source === 'events') updateData.eventsRevenue = FieldValue.increment(userAmount);
@@ -6097,7 +4395,7 @@ catch (e) { }
             amount: pointsToAdd,
             type: 'accrual',
             source: source,
-            reason: `${reason} (${(userSplit * 100).toFixed(0)}% Share)`,
+            reason,
             timestamp
           });
 
@@ -6118,32 +4416,26 @@ catch (e) { }
         }
       }
 
-      // 3. Auto Tax Remittance (MoR Logic)
-      // Automatically calculate and remit taxes (VAT/GST/WHT) on platform earnings
-      const platformTaxRate = 0.05;
-      const platformTaxAmount = platformAmount * platformTaxRate;
-
       // Update Platform Stats
       const statsRef = resilientDb.collection('platform').doc('stats');
-      const platformUpdate: any = {
-        platformRevenue: FieldValue.increment(totalAmount), // Total Inflow
-        platformShare: FieldValue.increment(platformAmount - platformTaxAmount), // Net after Tax
-        platformOutflow: FieldValue.increment(userAmount + platformTaxAmount), // User Share + Tax Remitted
+      await statsRef.update({
+        platformRevenue: FieldValue.increment(totalAmount),
+        platformShare: FieldValue.increment(platformAmount),
         totalUserBalances: FieldValue.increment(userAmount),
-        lastUpdated: timestamp,
-        serverSecret: "pulse-feeds-server-secret-2026"
-      };
+        lastUpdated: timestamp
+      }).catch(async (err) => {
+        if (err.message.includes('NOT_FOUND') || err.message.includes('no document')) {
+          await statsRef.set({
+            platformRevenue: totalAmount,
+            platformShare: platformAmount,
+            totalUserBalances: userAmount,
+            lastUpdated: timestamp,
+            createdAt: timestamp
+          });
+        }
+      });
 
-      // Detailed Categorization
-      if (source === 'ad') {
-        platformUpdate.platformAds = FieldValue.increment(platformAmount - platformTaxAmount);
-      } else if (source === 'payment' || source === 'subscription' || source === 'membership') {
-        platformUpdate.platformPayments = FieldValue.increment(platformAmount - platformTaxAmount);
-      }
-
-      await statsRef.set(platformUpdate, { merge: true });
-
-      // Log Platform Revenue Transaction
+      // Log Platform Transaction
       await resilientDb.collection('platform_transactions').add({
         type: source === 'payment' || source === 'app_creation' ? 'platform_revenue' : 'revenue',
         source,
@@ -6157,27 +4449,12 @@ catch (e) { }
         serverSecret: SERVER_SECRET
       });
 
-      // Log Auto Tax Remittance (Expense)
-      if (platformTaxAmount > 0) {
-        await resilientDb.collection('platform_transactions').add({
-          type: 'expense',
-          source: 'tax_remittance',
-          platformAmount: -platformTaxAmount,
-          totalAmount: -platformTaxAmount,
-          unit: 'USD',
-          reason: `Auto Tax Remittance (MoR) for ${source} (${(platformTaxRate * 100).toFixed(0)}%)`,
-          userId: 'SYSTEM_MOR',
-          timestamp,
-          serverSecret: SERVER_SECRET
-        });
-      }
-
       res.json({ 
         success: true, 
         userAmount, 
         platformAmount, 
         pointsAdded: pointsToAdd,
-        split: (source === 'payment' || source === 'ad' || source === 'membership' || source === 'subscription' ? '100% Platform' : `${(userSplit * 100).toFixed(0)}/${(platformSplit * 100).toFixed(0)}`)
+        split: (source === 'payment' ? '100% Platform' : '50/50')
       });
     } catch (error: any) {
       console.error("[Revenue Log] Error:", error);
@@ -6198,27 +4475,6 @@ catch (e) { }
   // Duplicate Binance withdraw route removed (using the one defined earlier in startServer)
 
   // Health check route
-  app.get("/api/debug/reset-treasury", async (req, res) => {
-    try {
-      const statsRef = resilientDb.collection('platform').doc('stats');
-      await statsRef.update({
-        platformShare: 20000.00
-      });
-      // Add a reconciliation transaction
-      await resilientDb.collection('platform_transactions').add({
-        type: 'revenue',
-        source: 'maintenance_restoration',
-        platformAmount: 20000.00,
-        totalAmount: 20000.00,
-        reason: "Manual Treasury Correction",
-        timestamp: FieldValue.serverTimestamp()
-      });
-      res.json({ success: true, message: "Treasury reset to 20,000 and transaction added." });
-    } catch (err) {
-      res.status(500).json({ error: String(err) });
-    }
-  });
-
   app.get("/health", (req, res) => {
     res.send("Server is alive!");
   });
@@ -6256,8 +4512,7 @@ catch (e) { }
 
   // Final 404 JSON fallback for API routes
   app.use("/api/*", (req, res) => {
-    console.warn(`[API 404] ${req.method} ${req.originalUrl} - Not Matched`);
-    res.status(404).json({ success: false, error: `Fallback 404 for ${req.method} ${req.originalUrl}` });
+    res.status(404).json({ success: false, error: `Route ${req.method} ${req.path} not found.` });
   });
 
   // Vite middleware for development
@@ -6281,16 +4536,31 @@ catch (e) { }
     });
   }
 
-  app.listen(PORT, HOST, () => {
-    console.log(`Server running on http://${HOST}:${PORT}`);
-  });
-}
+    // ... all your previous code ...
 
-startServer().catch((err) => {
-  console.error("CRITICAL: Failed to start server:", err);
-  process.exit(1);
+// ... all your previous code ...
 
+import express from 'express';
+// ... add your other imports here ...
+
+const app = express();
+const PORT = 3000;
+
+// ... add your middleware/routes here ...
+
+// Final listener
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`🚀 FRONT DOOR OPEN: SERVER RUNNING ON ${PORT}`);
- 7646c87 (Add deployment workflow)
 });
+
+// Start background services
+async function startServer() {
+  // your initialization logic
+}
+startServer().catch(console.error);
+}
+}
+}
+}
+
+

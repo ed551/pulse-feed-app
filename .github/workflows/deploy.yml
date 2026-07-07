@@ -1,22 +1,32 @@
+ HEAD
 name: Pulse Feeds Self-Checking Deployment
+
+name: Deploy Pulse Feeds
+ 7646c87 (Add deployment workflow)
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ main ]
 
 jobs:
-  build-and-deploy:
+  deploy:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v3
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@master
         with:
-          node-version: '20'
+          host: ${{ secrets.ORACLE_HOST }}
+          username: ${{ secrets.ORACLE_USERNAME }}
+          key: ${{ secrets.ORACLE_SSH_KEY }}
+          script: |
+            cd ~/pulse-feed-app
+            git pull origin main
+            npm install
+            npx esbuild server.ts --bundle --platform=node --format=cjs --packages=external --outfile=dist/server.cjs
+            pm2 restart backend
 
+ HEAD
       - name: Install Dependencies
         run: |
           rm -f package-lock.json
@@ -35,3 +45,5 @@ jobs:
 
       - name: Deploy to Surge
         run: npx surge ./dist pulse-feeds.surge.sh --token ${{ secrets.SURGE_TOKEN }}
+
+ 7646c87 (Add deployment workflow)
